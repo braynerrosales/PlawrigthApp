@@ -20,6 +20,7 @@ hero:
 
 import Progress from '../../components/Progress.astro';
 import RouteSteps from '../../components/home/RouteSteps.astro';
+import { withBase } from '../../lib/paths';
 
 <div class="home-routes">
 	<RouteSteps
@@ -48,10 +49,10 @@ import RouteSteps from '../../components/home/RouteSteps.astro';
 
 <p class="home-quick not-content">
 	<span>Lo más buscado:</span>
-	<a href="/web/locators/#strictness"><code>strict mode violation</code></a>
-	<a href="/web/locators/#getbyrole"><code>getByRole</code></a>
-	<a href="/web/auto-waiting/#cuando-la-espera-no-termina-el-error-de-timeout"><code>Timeout exceeded</code></a>
-	<a href="/web/assertions/#texto-valor-y-atributos"><code>toHaveText</code></a>
-	<a href="/api/sesion-y-autenticacion/#iniciar-sesión-una-vez-y-guardar-el-estado"><code>storageState</code></a>
+	<a href={withBase('/web/locators/#strictness')}><code>strict mode violation</code></a>
+	<a href={withBase('/web/locators/#getbyrole')}><code>getByRole</code></a>
+	<a href={withBase('/web/auto-waiting/#cuando-la-espera-no-termina-el-error-de-timeout')}><code>Timeout exceeded</code></a>
+	<a href={withBase('/web/assertions/#texto-valor-y-atributos')}><code>toHaveText</code></a>
+	<a href={withBase('/api/sesion-y-autenticacion/#iniciar-sesión-una-vez-y-guardar-el-estado')}><code>storageState</code></a>
 	<span>o <kbd>Ctrl</kbd> + <kbd>K</kbd> para buscar.</span>
 </p>

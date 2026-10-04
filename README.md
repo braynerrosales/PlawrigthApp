@@ -15,6 +15,8 @@ npm run snippets:python     # ejecuta los snippets Python (con el entorno virtua
 npm run snippets:java       # compila + ejecuta los snippets Java (Maven Wrapper, JUnit 5)
 ```
 
+El sitio se publica en GitHub Pages (<https://braynerrosales.github.io/PlawrigthApp/>) con el workflow `.github/workflows/deploy.yml` en cada push a `master`. Por eso vive bajo el `base` `/PlawrigthApp/`: en local se abre en `http://localhost:4321/PlawrigthApp/`. Los links internos se escriben igual (`[Locators](/web/locators/)`); el `base` lo agrega un plugin de Markdown (`site/src/lib/base-links.ts`) y, en componentes y `<a href>` de MDX, `withBase()` de `site/src/lib/paths.ts`.
+
 Los navegadores para los snippets se instalan una vez con `npx playwright install chromium`.
 
 Para los snippets de Python (requiere Python 3.9+), una vez:
