@@ -1,9 +1,18 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import { CATEGORIES } from './src/lib/categories';
+import { satteri } from '@astrojs/markdown-satteri';
+import { baseLinks } from './src/lib/base-links';
+
+// GitHub Pages sirve el sitio en https://braynerrosales.github.io/PlawrigthApp/.
+const site = 'https://braynerrosales.github.io';
+const base = '/PlawrigthApp/';
 
 // https://astro.build/config
 export default defineConfig({
+	site,
+	base,
+	markdown: { processor: satteri({ mdastPlugins: [baseLinks(base)] }) },
 	integrations: [
 		starlight({
 			title: 'Guía de Playwright',

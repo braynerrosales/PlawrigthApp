@@ -7,6 +7,7 @@
  */
 import { CATEGORIES, type CategoryId } from '../lib/categories';
 import { categoryName, getModules } from '../lib/catalog';
+import { withBase } from '../lib/paths';
 
 type Props =
 	| { module: string; overview?: never; category?: never }
@@ -46,7 +47,7 @@ const total = modules.length;
 				<ul class="pg-cats">
 					{routes.map((route) => (
 						<li>
-							<a href={`/${route.id}/`}>
+							<a href={withBase(`/${route.id}/`)}>
 								<b>{route.label}</b>
 								{route.ids.length > 0 ? (
 									<span data-ids={route.ids.join(',')}>

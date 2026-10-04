@@ -3,7 +3,7 @@
 | ID | Tarea | Estado | Asignado | Rama |
 |----|-------|--------|----------|------|
 | 001 | Base del sitio (Astro + Starlight, metadata, selector de lenguaje, componentes) y módulo piloto Locators | DONE | Claude | — |
-| 002 | Inicializar git y repositorio remoto para el flujo de ramas y PRs | TODO | Bray | — |
+| 002 | Inicializar git y repositorio remoto para el flujo de ramas y PRs | DONE | Bray | — |
 | 003 | Pipeline CI del MVP: Checkout → Install → Build → Validación de contenido → Publicar | TODO | — | — |
 | 004 | Ruta 1. Empezar: módulos 01 Qué es Playwright, 02 Instalación y primer test, 03 Browser, Context y Page | DONE | Claude | — |
 | 005 | Ruta 2. Automatización Web: Acciones e interacciones, Auto-waiting y actionability, Assertions | REVIEW | Bray | — |
@@ -17,5 +17,6 @@
 | 013 | Snippets Python en los 16 módulos (pytest-playwright 1.63), cobertura `complete` | REVIEW | Bray | — |
 | 014 | Snippets Java en los 16 módulos (Playwright 1.63 + JUnit 5, Maven Wrapper), cobertura `complete` | REVIEW | Bray | — |
 | 015 | Snippets JavaScript en los 16 módulos (Playwright Test 1.63, tipos con JSDoc), cobertura `complete` | REVIEW | Bray | — |
+| 016 | Publicar en GitHub Pages: `base` `/PlawrigthApp/`, links internos con el base y workflow de build + deploy | REVIEW | Bray | feat/016-github-pages |
 
 Estados: `TODO` → `IN_PROGRESS` → `REVIEW` → `TESTING` → `DONE`

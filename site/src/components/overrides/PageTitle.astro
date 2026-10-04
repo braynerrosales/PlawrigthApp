@@ -4,6 +4,7 @@ import Default from '@astrojs/starlight/components/PageTitle.astro';
 import ModuleHeader from '../ModuleHeader.astro';
 import { categoryName } from '../../lib/catalog';
 import { getModule } from '../../lib/modules';
+import { withBase } from '../../lib/paths';
 
 const { entry } = Astro.locals.starlightRoute;
 const module = getModule(entry.data);
@@ -12,7 +13,7 @@ const module = getModule(entry.data);
 {
 	module && (
 		<p class="crumbs">
-			<a href={`/${module.category}/`}>{categoryName(module.category)}</a> / Módulo {module.order}
+			<a href={withBase(`/${module.category}/`)}>{categoryName(module.category)}</a> / Módulo {module.order}
 		</p>
 	)
 }

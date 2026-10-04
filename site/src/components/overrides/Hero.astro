@@ -6,6 +6,7 @@
 import CodeExample from '../CodeExample.astro';
 import { getModules } from '../../lib/catalog';
 import { LANGUAGES } from '../../lib/languages';
+import { withBase } from '../../lib/paths';
 
 const { hero } = Astro.locals.starlightRoute.entry.data;
 const modules = await getModules();
@@ -25,7 +26,7 @@ const completeList = new Intl.ListFormat('es').format(complete.map((l) => l.labe
 				{hero.tagline && <p class="hero__tagline" set:html={hero.tagline} />}
 				<div class="hero__actions">
 					{hero.actions.map((action) => (
-						<a class:list={['pg-btn', { 'pg-btn--primary': action.variant === 'primary' }]} href={action.link}>
+						<a class:list={['pg-btn', { 'pg-btn--primary': action.variant === 'primary' }]} href={withBase(action.link)}>
 							{action.text}
 							{action.variant === 'primary' && <span aria-hidden="true">→</span>}
 						</a>
