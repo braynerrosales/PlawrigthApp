@@ -1,0 +1,114 @@
+---
+title: Browser, Context y Page
+description: Cómo se relacionan el navegador, las sesiones aisladas y las páginas, y cómo usarlos para probar varios usuarios y ventanas.
+category: fundamentos
+level: beginner
+order: 3
+readingTime: 15
+tags:
+  - Browser
+  - BrowserContext
+  - Page
+  - aislamiento
+  - sesiones
+  - popup
+  - cookies
+prerequisites:
+  - Qué es Playwright
+  - Instalación y primer test
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Casi todo lo que hace una prueba ocurre sobre una `Page`, pero entender de dónde sale esa página explica por qué las pruebas de Playwright pueden ser independientes entre sí y cómo probar dos usuarios a la vez sin abrir dos navegadores.
+
+## Qué aprenderás
+
+- Qué representa cada nivel: Browser, BrowserContext y Page.
+- Por qué cada prueba debería tener su propio contexto.
+- Cómo simular dos usuarios con sesiones independientes.
+- Cómo trabajar con una ventana o pestaña nueva que abre la aplicación.
+
+## Concepto
+
+```text
+Browser                      un proceso del navegador (caro de crear)
+ ├─ BrowserContext (admin)   sesión aislada: cookies, localStorage, permisos
+ │   ├─ Page                 pestaña 1
+ │   └─ Page                 pestaña 2 (comparte sesión con la 1)
+ └─ BrowserContext (cliente) otra sesión, sin nada en común con la de admin
+     └─ Page
+```
+
+- **Browser**: una instancia de Chromium, Firefox o WebKit. Lanzarla tarda; por eso se reutiliza.
+- **BrowserContext**: equivale a un perfil de navegador recién creado, como una ventana de incógnito. Tiene sus propias cookies, `localStorage`, caché y permisos. Crearlo cuesta milisegundos.
+- **Page**: una pestaña o ventana dentro de un contexto. Las páginas del mismo contexto comparten sesión; las de contextos distintos no.
+
+<Aside title="Qué hace el test runner por ti">
+En Playwright Test (TypeScript y JavaScript), el fixture `page` sale de un contexto nuevo creado para cada prueba. En C#, las clases base `PageTest` y `ContextTest` hacen lo mismo, y `BrowserTest` te da el `Browser` para que crees los contextos tú. `pytest-playwright` también crea un contexto nuevo por prueba. En todos los casos, el navegador se reutiliza entre pruebas.
+</Aside>
+
+## Sesiones independientes: admin y cliente
+
+Algunos flujos necesitan dos usuarios a la vez: un administrador aprueba lo que un cliente solicitó, o dos personas conversan en un chat. Con dos contextos sobre el mismo navegador, cada usuario tiene su propia sesión sin interferir con el otro.
+
+<CodeExample id="browser-context-page/admin-y-cliente" title="Dos contextos, dos sesiones">
+	<Fragment slot="what">Crea un contexto para el administrador y otro para el cliente, agrega una cookie de sesión solo al del administrador y comprueba que el contexto del cliente no tiene ninguna.</Fragment>
+	<Fragment slot="why">Las cookies, el `localStorage` y los permisos pertenecen al contexto, no al navegador. Por eso dos contextos se comportan como dos personas en dos equipos distintos, aunque compartan el proceso del navegador.</Fragment>
+	<Fragment slot="avoids">Evita lanzar un navegador por usuario (mucho más lento) y evita que el inicio de sesión de un usuario contamine al otro, que es lo que pasaría con dos pestañas del mismo contexto.</Fragment>
+	<Fragment slot="alternative">En un flujo real, cada contexto iniciaría sesión por la interfaz o cargaría un estado guardado con `storageState`, que se verá en el módulo de sesión y autenticación.</Fragment>
+</CodeExample>
+
+## Varias pestañas y popups
+
+Cuando la aplicación abre una ventana nueva (un link con `target="_blank"` o `window.open`), Playwright la entrega como una nueva `Page` del mismo contexto. Hay que empezar a esperarla **antes** de la acción que la abre; si no, el evento puede ocurrir antes de que la prueba lo escuche.
+
+<CodeExample id="browser-context-page/popup" title="Trabajar con una ventana nueva">
+	<Fragment slot="what">Hace clic en **Abrir ayuda**, recibe la ventana nueva, comprueba su encabezado, la cierra y verifica que la página original sigue disponible.</Fragment>
+	<Fragment slot="why">En TypeScript y JavaScript se crea la promesa del evento `popup` antes del clic y se espera después. En C#, `RunAndWaitForPopupAsync` hace lo mismo en una sola llamada: empieza a escuchar, ejecuta la acción y devuelve la página nueva; en Java, `page.waitForPopup(() -> ...)` recibe la acción y devuelve la página. En Python, el bloque `with page.expect_popup() as popup_info` empieza a escuchar al entrar y deja la página en `popup_info.value`.</Fragment>
+	<Fragment slot="avoids">Evita la condición de carrera de esperar el popup después del clic, que falla de forma intermitente, y evita buscar la ventana nueva recorriendo todas las páginas del contexto.</Fragment>
+	<Fragment slot="alternative">Si no sabes qué página abrirá la ventana, escucha el evento `page` del contexto (`context.waitForEvent('page')` en TypeScript y JavaScript, `Context.RunAndWaitForPageAsync` en C#, `context.waitForPage(() -> ...)` en Java, `context.expect_page()` en Python).</Fragment>
+</CodeExample>
+
+## Contextos aislados
+
+La regla práctica es **un contexto por prueba**. Así una prueba no hereda cookies, datos en `localStorage` ni permisos concedidos por otra, y las pruebas pueden ejecutarse en cualquier orden o en paralelo.
+
+<BestPractice title="dejar que el runner cree un contexto nuevo por prueba">
+	Usa el fixture `page` de Playwright Test o las clases base de tu lenguaje (`PageTest`, `ContextTest`). Si una prueba necesita una sesión iniciada, prepárala en esa prueba o carga un `storageState` guardado; no la heredes de la prueba anterior.
+</BestPractice>
+
+<BadPractice title="compartir la misma página entre pruebas">
+	Guardar una `Page` en una variable estática o de clase y reutilizarla en varias pruebas hace que cada una dependa del estado en que la dejó la anterior: si una falla, las siguientes fallan por arrastre, y el orden de ejecución pasa a importar. Además, impide ejecutar en paralelo.
+</BadPractice>
+
+## Caso QA real
+
+Un banco ficticio exige que las transferencias mayores a cierto monto las apruebe un supervisor. La prueba crea dos contextos: en el del cliente se solicita la transferencia; en el del supervisor se aprueba; de vuelta en el contexto del cliente se comprueba el estado «Aprobada». Todo ocurre en un solo navegador y en una sola prueba, y ninguna sesión interfiere con la otra. El patrón es el del ejemplo [Dos contextos, dos sesiones](#sesiones-independientes-admin-y-cliente), con un inicio de sesión real en cada contexto.
+
+## Errores comunes
+
+- **«Target page, context or browser has been closed»**: la prueba usa una página o contexto que ya se cerró, a menudo porque se guardó entre pruebas o se cerró antes de terminar las aserciones.
+- **El popup no se captura**: se empezó a esperar el evento después del clic. Crea la espera antes de la acción.
+- **Dos pestañas «del mismo usuario» que no comparten sesión**: se crearon en contextos distintos. Si deben compartir sesión, crea ambas páginas con el mismo contexto.
+- **Pruebas que pasan solas y fallan en conjunto**: estado compartido entre pruebas. Revisa que cada una tenga su propio contexto.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright |
+|---|---|
+| Un `WebDriver` es a la vez navegador, sesión y pestaña activa | Browser, BrowserContext y Page son objetos separados |
+| Dos usuarios a la vez requieren dos drivers (dos navegadores) | Dos contextos sobre el mismo navegador |
+| `SwitchTo().Window(handle)` para cambiar de pestaña | Cada pestaña es una `Page`; se usa directamente, sin cambiar el foco |
+| Limpiar cookies entre pruebas con `DeleteAllCookies` | Un contexto nuevo empieza vacío |

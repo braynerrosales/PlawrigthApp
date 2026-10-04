@@ -1,0 +1,151 @@
+---
+title: Navegación
+description: Abrir páginas con goto y baseURL, comprobar la URL después de un clic o una redirección, navegar en una SPA, moverse por el historial y leer el código de respuesta.
+category: web
+level: beginner
+order: 8
+readingTime: 15
+tags:
+  - navegación
+  - goto
+  - baseURL
+  - toHaveURL
+  - waitForURL
+  - waitForNavigation obsoleto
+  - goBack
+  - goForward
+  - reload
+  - redirección
+  - SPA
+  - pushState
+  - networkidle
+  - response.status
+  - "404"
+  - Cannot navigate to invalid URL
+prerequisites:
+  - Locators
+  - Auto-waiting y actionability
+  - Assertions
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Casi toda prueba empieza abriendo una página y muchas terminan comprobando que la aplicación llevó a la persona al lugar correcto: después de un clic, de un login o de un botón **Atrás**. Navegar es fácil; lo importante es **saber cuándo terminó la navegación** y comprobar el destino sin esperas fijas.
+
+## Qué aprenderás
+
+- Cómo abrir páginas con `goto` y por qué conviene configurar `baseURL`.
+- Cómo comprobar la URL después de un clic o de una redirección con `toHaveURL`.
+- Qué cambia en una aplicación de una sola página (SPA), donde la URL cambia sin cargar un documento nuevo.
+- Cómo moverse por el historial con `goBack` y `goForward`.
+- Por qué un 404 no hace fallar a `goto` y cómo comprobar el código de respuesta.
+
+### La página de práctica
+
+Los ejemplos usan **Tienda QA**, un sitio pequeño con varias páginas reales: Inicio, Productos, un formulario de inicio de sesión que redirige a **Mi cuenta** 300 ms después de enviarlo, y **Mi cuenta**, que es una SPA con dos secciones (Perfil y Pedidos) que cambia la URL con `history.pushState`. Cualquier otra ruta responde con un 404.
+
+El sitio se sirve en `https://tienda.test`, pero **ninguna petición sale a la red**: la prueba responde cada petición con los archivos de práctica locales. Cómo se hace eso (interceptar peticiones con `route`) se enseña más adelante, en el módulo de red; aquí basta con saber que la dirección funciona como un sitio real.
+
+## Abrir una página: goto y baseURL
+
+<CodeExample id="navegacion/goto" title="Abrir la página de inicio">
+	<Fragment slot="what">Configura `baseURL` como `https://tienda.test`, abre la ruta `/` y comprueba que se ve el título «Bienvenido a Tienda QA».</Fragment>
+	<Fragment slot="why">Con `baseURL`, `goto` recibe rutas relativas y las combina con la dirección base. Por defecto, `goto` espera al evento `load` de la página: el documento y sus recursos (estilos, scripts, imágenes) terminaron de cargarse.</Fragment>
+	<Fragment slot="avoids">Evita repetir la dirección del ambiente en cada prueba y evita esperas fijas después de abrir la página.</Fragment>
+	<Fragment slot="alternative">Normalmente `baseURL` se define una sola vez en la configuración del proyecto (`use: { baseURL }` en `playwright.config.ts`, en `ContextOptions()` de una clase base en C#, en las opciones del contexto (`setBaseURL`) que crea la clase base en Java, o en el fixture `browser_context_args` o la opción `--base-url` de `pytest-playwright` en Python) y se lee de una variable de entorno para cambiar de ambiente sin tocar las pruebas.</Fragment>
+</CodeExample>
+
+`load` no significa que la aplicación terminó de pintar sus datos: muchas páginas cargan contenido después, con peticiones propias. Por eso, después de `goto`, la prueba comprueba **lo que necesita ver** con una aserción, que reintenta hasta que aparece.
+
+<Aside type="caution" title="No esperes a networkidle">
+`goto` acepta la opción `waitUntil` (`load`, `domcontentloaded`, `commit` y `networkidle`). La documentación oficial marca `networkidle` como **desaconsejado** para pruebas: espera a que no haya conexiones de red durante 500 ms, algo que en una aplicación con sondeos, analítica o WebSockets puede tardar mucho o no ocurrir nunca. En su lugar, espera el contenido concreto con una aserción web-first (`toBeVisible`, `toHaveText`, `toHaveURL`).
+</Aside>
+
+## URLs completas vs baseURL
+
+<BadPractice title="escribir la URL completa en cada prueba" id="navegacion/url-completa">
+	Cada prueba repite `https://tienda.test`. El día que haya que ejecutar la suite contra otro ambiente (desarrollo, QA, staging) hay que editar todas las pruebas, y basta olvidar una para que la suite mezcle ambientes sin que nadie lo note.
+</BadPractice>
+
+<BestPractice title="configurar baseURL y navegar con rutas" id="navegacion/goto">
+	La dirección del ambiente vive en un solo lugar y las pruebas solo dicen **a qué ruta** van. Cambiar de ambiente es cambiar un valor de configuración.
+</BestPractice>
+
+## Navegar con un clic y comprobar la URL
+
+<CodeExample id="navegacion/clic-y-url" title="Ir a Productos desde el menú">
+	<Fragment slot="what">Abre el inicio, hace clic en el enlace **Productos** y comprueba que la URL termina en `/productos` y que se ve el título «Productos».</Fragment>
+	<Fragment slot="why">El clic dispara la navegación, pero no espera a que termine. `toHaveURL` es una aserción web-first sobre la página: reintenta hasta que la URL coincide o vence el timeout. La expresión regular comprueba solo la ruta, sin depender del ambiente.</Fragment>
+	<Fragment slot="avoids">Evita leer `page.url()` justo después del clic, que puede devolver todavía la URL anterior, y evita esperas fijas «para que cargue».</Fragment>
+	<Fragment slot="alternative">En TypeScript y JavaScript, si hay `baseURL`, `toHaveURL` también acepta una ruta como texto (`'/productos'`): la combina con `baseURL` y compara la URL completa.</Fragment>
+</CodeExample>
+
+## Redirecciones
+
+<CodeExample id="navegacion/redireccion" title="El login redirige a la cuenta">
+	<Fragment slot="what">Completa usuario y contraseña, hace clic en **Ingresar** y comprueba que la aplicación termina en `/cuenta` mostrando «Mi cuenta».</Fragment>
+	<Fragment slot="why">La redirección ocurre un momento después del clic. `toHaveURL` espera hasta que la URL cambia, sin importar cuánto tarde (dentro del timeout de la aserción).</Fragment>
+	<Fragment slot="avoids">Evita una espera fija de «un segundo» que sobra cuando la redirección es rápida y no alcanza cuando el servidor está lento.</Fragment>
+	<Fragment slot="alternative">Si necesitas esperar la URL **sin afirmar nada** (por ejemplo, como paso intermedio antes de seguir actuando), usa `page.waitForURL(...)` (`Page.WaitForURLAsync` en C#). También espera a que la página llegue al evento `load`.</Fragment>
+</CodeExample>
+
+<Aside type="caution" title="waitForNavigation está obsoleto">
+En código antiguo verás `waitForNavigation` (`WaitForNavigationAsync` en C#). En Playwright 1.63 está marcado como obsoleto porque es propenso a condiciones de carrera: si la navegación termina antes de empezar a esperarla, la espera nunca se cumple. La documentación oficial indica usar `waitForURL` en su lugar.
+</Aside>
+
+## Aplicaciones de una sola página (SPA)
+
+En una SPA (React, Angular, Vue), muchos cambios de pantalla no cargan un documento nuevo: la aplicación cambia la URL con la History API (`history.pushState`) y redibuja el contenido. No hay un evento `load` que esperar, pero la URL sí cambia, y eso es lo que comprueba `toHaveURL`.
+
+<CodeExample id="navegacion/spa" title="Navegar dentro de Mi cuenta">
+	<Fragment slot="what">Abre `/cuenta` (sección Perfil), hace clic en **Pedidos**, comprueba la URL `/cuenta/pedidos` y el título «Pedidos», vuelve atrás y comprueba que se muestra Perfil otra vez.</Fragment>
+	<Fragment slot="why">`toHaveURL` compara la URL actual de la página, venga de una carga completa o de `pushState`. El contenido se comprueba con una aserción web-first porque la aplicación lo redibuja por su cuenta. `goBack` funciona igual: la aplicación recibe el evento `popstate` y vuelve a la sección anterior.</Fragment>
+	<Fragment slot="avoids">Evita esperar una navegación «completa» que en una SPA nunca ocurre, y evita pruebas que solo comprueban la URL sin verificar que la pantalla cambió.</Fragment>
+</CodeExample>
+
+## El historial: goBack y goForward
+
+<CodeExample id="navegacion/historial" title="Volver atrás y adelante">
+	<Fragment slot="what">Va del inicio a Productos, vuelve atrás al inicio y luego avanza otra vez a Productos, comprobando la URL y el título en cada paso.</Fragment>
+	<Fragment slot="why">`goBack` y `goForward` equivalen a los botones del navegador y, como `goto`, esperan al evento `load` por defecto. Devuelven la respuesta del documento principal, o `null` si no hay a dónde ir.</Fragment>
+	<Fragment slot="avoids">Evita volver con `goto` a una URL escrita a mano, que no prueba el comportamiento real del historial (por ejemplo, que la aplicación restaure el estado al volver).</Fragment>
+	<Fragment slot="alternative">Para recargar la página actual existe `page.reload()` (`Page.ReloadAsync` en C#).</Fragment>
+</CodeExample>
+
+## El código de respuesta
+
+<CodeExample id="navegacion/respuesta" title="Una ruta inexistente responde 404">
+	<Fragment slot="what">Abre `/no-existe`, comprueba que la respuesta tiene estado 404 y que la página muestra «Página no encontrada».</Fragment>
+	<Fragment slot="why">`goto` devuelve la respuesta del documento principal. Un 404 o un 500 **no lanzan una excepción**: el servidor respondió y el navegador mostró la página de error. Si el código importa, hay que comprobarlo con `status()` (`Status` en C#) u `ok()` (`Ok` en C#), que es verdadero solo para estados 200-299.</Fragment>
+	<Fragment slot="avoids">Evita creer que una prueba que abrió la página sin errores llegó a la página correcta: sin comprobar el estado o el contenido, una página de error pasa desapercibida.</Fragment>
+	<Fragment slot="alternative">`goto` sí lanza una excepción cuando la navegación no se puede completar: el host no existe, la URL no es válida o vence el timeout de navegación.</Fragment>
+</CodeExample>
+
+## Errores comunes
+
+- **`Cannot navigate to invalid URL` con `goto('/')`**: la prueba usa una ruta relativa, pero no hay `baseURL` configurado. Configúralo o usa la URL completa.
+- **`toHaveURL` falla con una URL que «parece igual»**: con texto se compara la URL completa, incluidos la barra final, los parámetros (`?pagina=2`) y el fragmento (`#seccion`). Si solo importa la ruta, usa una expresión regular.
+- **La prueba lee la URL anterior**: se usó `page.url()` (`Page.Url` en C#) justo después de un clic. Usa `toHaveURL`, que espera.
+- **La prueba se queda esperando después de `goto`**: se usó `waitUntil: 'networkidle'` en una página que nunca deja de hacer peticiones. Quita la opción y espera el contenido con una aserción.
+- **La prueba pasa aunque la página no existe**: `goto` no falla por un 404. Comprueba el estado de la respuesta o un elemento propio de la página esperada.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `driver.Navigate().GoToUrl(url)` | `page.goto(url)` | Con `baseURL`, Playwright acepta rutas relativas; además devuelve la respuesta. |
+| `driver.Navigate().Back()` / `Forward()` / `Refresh()` | `goBack()` / `goForward()` / `reload()` | Equivalentes directos; en Playwright esperan al evento `load` por defecto. |
+| `Assert.That(driver.Url, Is.EqualTo(...))` | `Expect(Page).ToHaveURLAsync(...)` | Selenium compara una sola vez; `toHaveURL` reintenta hasta que la URL coincide. |
+| `new WebDriverWait(...).Until(d => d.Url.Contains(...))` | `toHaveURL(regex)` o `waitForURL(...)` | Esperar y afirmar en un solo paso, sin clases auxiliares. |
+| El código HTTP no está disponible en WebDriver clásico | `response.status()` | Playwright expone la respuesta del documento principal en `goto`. |

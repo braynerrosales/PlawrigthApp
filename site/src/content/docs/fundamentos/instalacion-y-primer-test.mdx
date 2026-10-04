@@ -1,0 +1,207 @@
+---
+title: Instalación y primer test
+description: Requisitos, instalación de la librería y de los navegadores, primer test y cómo ejecutarlo en cada lenguaje.
+category: fundamentos
+level: beginner
+order: 2
+readingTime: 15
+tags:
+  - instalación
+  - primer test
+  - npm init playwright
+  - Microsoft.Playwright.NUnit
+  - pytest-playwright
+  - Maven
+  - playwright install
+prerequisites:
+  - Qué es Playwright
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside, Code } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import LanguageTabs from '../../../components/LanguageTabs.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Instalar Playwright son dos pasos en todos los lenguajes: **agregar la librería al proyecto** y **descargar los navegadores** que va a controlar. Lo que cambia es el gestor de paquetes y el test runner.
+
+## Qué aprenderás
+
+- Qué necesitas instalado antes de empezar en cada lenguaje.
+- Cómo crear un proyecto e instalar Playwright y sus navegadores.
+- Cómo se ve el primer test y qué comprueba.
+- Cómo ejecutarlo y ver el navegador mientras corre.
+
+## Requisitos
+
+Los cinco lenguajes comparten los sistemas operativos soportados: Windows 11 o superior, Windows Server 2019 o superior o WSL, macOS 14 (Sonoma) o superior, y Debian 12/13 o Ubuntu 22.04/24.04/26.04.
+
+<LanguageTabs label="Requisitos por lenguaje">
+<Fragment slot="csharp">
+
+- .NET (la documentación recomienda .NET 8; los ejemplos de esta guía se validan con .NET 10).
+- PowerShell 7 (`pwsh`) para el script que instala los navegadores.
+
+</Fragment>
+<Fragment slot="typescript">
+
+- Node.js en su última versión 22.x, 24.x o 26.x.
+
+</Fragment>
+<Fragment slot="javascript">
+
+- Node.js en su última versión 22.x, 24.x o 26.x.
+
+</Fragment>
+<Fragment slot="java">
+
+- Un JDK de Java 8 o superior (un JRE no basta: hace falta el compilador). Los ejemplos de esta guía usan Java 17 (records y bloques de texto).
+- Maven (los comandos de este módulo usan Maven).
+
+</Fragment>
+<Fragment slot="python">
+
+- Python 3.8 o superior y `pip`.
+
+</Fragment>
+</LanguageTabs>
+
+## Instalación
+
+<LanguageTabs label="Instalación por lenguaje">
+<Fragment slot="csharp">
+<Code lang="sh" title="NUnit" code={`dotnet new nunit -n PlaywrightTests
+cd PlaywrightTests
+dotnet add package Microsoft.Playwright.NUnit
+dotnet build
+pwsh bin/Debug/net10.0/playwright.ps1 install`} />
+
+La ruta de `playwright.ps1` depende del framework de destino del proyecto (`net8.0`, `net10.0`...). También existen paquetes para MSTest (`Microsoft.Playwright.MSTest`) y xUnit.
+
+</Fragment>
+<Fragment slot="typescript">
+<Code lang="sh" code={`npm init playwright@latest`} />
+
+El asistente pregunta el lenguaje (elige **TypeScript**), la carpeta de pruebas y si quieres descargar los navegadores. Crea `playwright.config.ts`, `package.json`, `package-lock.json` y `tests/example.spec.ts`.
+
+</Fragment>
+<Fragment slot="javascript">
+<Code lang="sh" code={`npm init playwright@latest`} />
+
+Es el mismo asistente que en TypeScript: elige **JavaScript** cuando pregunte el lenguaje. Las pruebas usan el mismo runner, Playwright Test.
+
+</Fragment>
+<Fragment slot="java">
+<Code lang="xml" title="pom.xml" code={`<dependency>
+  <groupId>com.microsoft.playwright</groupId>
+  <artifactId>playwright</artifactId>
+  <version>1.63.0</version>
+</dependency>
+<dependency>
+  <groupId>org.junit.jupiter</groupId>
+  <artifactId>junit-jupiter</artifactId>
+  <version>5.14.4</version>
+  <scope>test</scope>
+</dependency>`} />
+
+Playwright no trae test runner en Java: las pruebas de esta guía usan JUnit 5. Con su configuración por defecto, Maven (Surefire) solo ejecuta las clases cuyo nombre empieza o termina en `Test`, como `ExampleTest`. Los navegadores (Chromium, Firefox y WebKit) se descargan automáticamente la primera vez que se ejecuta código que usa Playwright.
+
+</Fragment>
+<Fragment slot="python">
+<Code lang="sh" code={`pip install pytest-playwright
+playwright install`} />
+
+`pytest-playwright` instala la librería `playwright` y el plugin de pytest; `playwright install` descarga los navegadores.
+
+</Fragment>
+</LanguageTabs>
+
+<Aside title="Por qué los navegadores se instalan aparte">
+Cada versión de Playwright está preparada para versiones concretas de Chromium, Firefox y WebKit. Por eso no usa el navegador que tengas instalado (salvo que lo pidas con un *channel*): así la misma prueba se comporta igual en tu equipo y en CI. Cuando actualices Playwright, vuelve a ejecutar la instalación de navegadores.
+</Aside>
+
+## Primer test
+
+Es el mismo ejemplo que genera `npm init playwright` y que propone la documentación oficial de cada lenguaje: abrir playwright.dev, comprobar el título y seguir el link **Get started**.
+
+<CodeExample id="primer-test/example" title="Primer test contra playwright.dev">
+<Fragment slot="what">La primera prueba comprueba que el título de la página contiene «Playwright». La segunda hace clic en el link **Get started** y comprueba que aparece el encabezado **Installation**.</Fragment>
+<Fragment slot="why">Cada prueba recibe una página nueva del test runner (`page` en TypeScript y JavaScript, `Page` en la clase base `PageTest` de C#, el fixture `page` de `pytest-playwright` en Python, el método `@BeforeEach` de la clase JUnit en Java) y termina con una aserción web-first que espera a que la condición se cumpla.</Fragment>
+<Fragment slot="avoids">Evita pruebas que solo navegan sin comprobar nada: una prueba sin aserción pasa aunque la página muestre un error.</Fragment>
+<Fragment slot="alternative">En Java, la documentación oficial empieza con un programa con `main`. Para pruebas, propone este patrón de JUnit 5: `Playwright` y `Browser` se crean una vez por clase (`@BeforeAll`) y un `BrowserContext` y una `Page` nuevos en cada prueba (`@BeforeEach`). Los ejemplos Java de los demás módulos heredan de una clase base con ese mismo ciclo de vida (`TestFixtures`, como en la documentación) y usan su campo `page`. La anotación `@UsePlaywright`, que entrega `Page` como parámetro, existe pero es experimental.</Fragment>
+</CodeExample>
+
+## Ejecución
+
+<LanguageTabs label="Ejecución por lenguaje">
+<Fragment slot="csharp">
+<Code lang="sh" code={`dotnet test
+dotnet test -- Playwright.LaunchOptions.Headless=false`} />
+
+La primera línea ejecuta en modo headless (sin ventana). La segunda muestra el navegador mientras corre la prueba.
+
+</Fragment>
+<Fragment slot="typescript">
+<Code lang="sh" code={`npx playwright test
+npx playwright test --headed
+npx playwright test --ui
+npx playwright show-report`} />
+
+Por defecto se ejecuta en modo headless y en los navegadores configurados en `playwright.config.ts`. `--headed` muestra el navegador, `--ui` abre UI Mode y `show-report` abre el reporte HTML.
+
+</Fragment>
+<Fragment slot="javascript">
+<Code lang="sh" code={`npx playwright test
+npx playwright test --headed
+npx playwright test --ui
+npx playwright show-report`} />
+
+Los mismos comandos que en TypeScript: el runner es el mismo.
+
+</Fragment>
+<Fragment slot="java">
+<Code lang="sh" code={`mvn test
+mvn test -Dtest=ExampleTest`} />
+
+Maven compila y ejecuta las pruebas con JUnit en modo headless; la segunda línea ejecuta solo una clase. Playwright para Java no tiene una opción de línea de comandos para ver el navegador: se lanza con `new BrowserType.LaunchOptions().setHeadless(false)` en `launch()`.
+
+</Fragment>
+<Fragment slot="python">
+<Code lang="sh" code={`pytest
+pytest --headed`} />
+
+Por defecto se ejecuta en modo headless con Chromium.
+
+</Fragment>
+</LanguageTabs>
+
+<BestPractice title="fijar la versión y reinstalar navegadores al actualizar">
+	Fija la versión exacta del paquete (en `package.json`, `.csproj`, `pom.xml` o `requirements.txt`) y vuelve a instalar los navegadores cada vez que la cambies. Así tu equipo y CI ejecutan exactamente la misma combinación.
+</BestPractice>
+
+<BadPractice title="mezclar versiones de Playwright en el mismo equipo">
+	Actualizar el paquete sin volver a instalar los navegadores provoca errores del tipo «Executable doesn't exist», que suelen aparecer recién en CI. Lo mismo ocurre si dos proyectos comparten máquina con versiones distintas y nadie ejecuta la instalación.
+</BadPractice>
+
+## Errores comunes
+
+- **«Executable doesn't exist» o «Looks like Playwright was just installed or updated»**: faltan los navegadores para la versión instalada. Ejecuta el comando de instalación de navegadores de tu lenguaje.
+- **`pwsh` no se reconoce en Windows**: el script necesita PowerShell 7, no Windows PowerShell 5.1. Instálalo o usa la ruta completa a `pwsh.exe`.
+- **No se encuentra `playwright.ps1`**: falta `dotnet build` o la ruta no coincide con el framework de destino del `.csproj`.
+- **El test pasa en tu equipo pero falla en CI con errores de librerías del sistema**: en Linux, los navegadores necesitan dependencias del sistema. Playwright puede instalarlas con la opción `--with-deps` del comando de instalación.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright |
+|---|---|
+| Instalar el paquete y un driver por navegador (o usar Selenium Manager) | Instalar el paquete y descargar los navegadores con un comando |
+| La versión del driver debe coincidir con la del navegador instalado | Cada versión de Playwright trae sus navegadores |
+| El test runner lo eliges siempre aparte | En TypeScript/JavaScript viene incluido (Playwright Test); en el resto se integra con el runner del ecosistema |

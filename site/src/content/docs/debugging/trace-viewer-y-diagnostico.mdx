@@ -1,0 +1,275 @@
+---
+title: Trace Viewer y diagnóstico de fallos
+description: "Un método para investigar una prueba que falla: leer el error y el call log, grabar y abrir un trace, nombrar pasos, depurar paso a paso y guardar evidencia sin recurrir a esperas ni timeouts más largos."
+category: debugging
+level: intermediate
+order: 16
+readingTime: 20
+tags:
+  - debugging
+  - Trace Viewer
+  - trace
+  - tracing
+  - show-trace
+  - trace.playwright.dev
+  - call log
+  - test.step
+  - GroupAsync
+  - PWDEBUG
+  - Inspector
+  - pause
+  - UI Mode
+  - headed
+  - slowMo
+  - screenshot
+  - video
+  - on-first-retry
+  - retain-on-failure
+prerequisites:
+  - Auto-waiting y actionability
+  - Assertions
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Una prueba que falla es información, no un obstáculo. La tentación es volver a ejecutarla, agregar una espera o subir el timeout hasta que pase. Eso esconde el problema. Este módulo propone un método: **leer lo que Playwright ya te dice, reproducir el fallo, mirar el trace y corregir la causa**.
+
+## Qué aprenderás
+
+- Un orden de diagnóstico que evita adivinar.
+- Cómo leer el mensaje de error y el *call log* de una aserción.
+- Cómo grabar un trace en TypeScript, JavaScript, C#, Java y Python, y cómo guardarlo solo cuando la prueba falla.
+- Cómo abrir un trace y qué muestra cada panel.
+- Cómo nombrar pasos para que el trace y el reporte se lean solos.
+- Cuándo usar el Inspector, `pause`, UI Mode y el modo *headed*.
+- Qué evidencia (capturas, video) conviene guardar.
+
+### La página de práctica
+
+La misma pantalla de pedidos de [Auto-waiting](/web/auto-waiting/): un aviso tapa la página durante 600 ms, **Cargar pedidos** trae tres pedidos con 800 ms de retraso y luego habilita **Exportar**.
+
+## El flujo de diagnóstico
+
+Ante un fallo, recorre estas preguntas en orden. Cada una descarta una familia de causas:
+
+| Pregunta | Dónde mirar | Señal típica |
+|---|---|---|
+| **¿El Locator encuentra el elemento correcto?** | Mensaje de error y call log | `waiting for getByRole(...)` sin `locator resolved`, o *strict mode violation*. |
+| **¿Los datos son los que la prueba supone?** | Snapshots del trace | La lista está vacía, el usuario no tiene permisos, falta un paso previo. |
+| **¿La red respondió lo esperado?** | Pestaña *Network* del trace | Un 401, un 500 o una petición que nunca terminó. |
+| **¿Es un problema de tiempos?** | Call log y línea de tiempo del trace | `element is not enabled`, `element is not stable`, algo que tapa el elemento. |
+| **¿Es el ambiente?** | Comparar el trace local con el de CI | Otro navegador, otro tamaño de pantalla, datos distintos, servicios lentos. |
+
+El trace responde a casi todas, pero el primer paso es siempre el más barato: **leer el error completo**.
+
+## Paso 1: leer el error y el call log
+
+En [Auto-waiting](/web/auto-waiting/#cuando-la-espera-no-termina-el-error-de-timeout) se vio cómo leer el call log de una **acción**. Las **aserciones** también lo incluyen, y además dicen qué esperaban y qué recibieron.
+
+<CodeExample id="trace-viewer-y-diagnostico/leer-el-error" title="Una aserción que falla por un paso que falta">
+	<Fragment slot="what">Comprueba que la lista tiene 3 pedidos, pero la prueba olvidó hacer clic en **Cargar pedidos**. Falla a los 2 segundos.</Fragment>
+	<Fragment slot="why">Es un fallo realista: el selector es correcto, la página funciona, pero la prueba no reproduce lo que haría una persona. El mensaje de error alcanza para verlo sin abrir nada más.</Fragment>
+	<Fragment slot="avoids">Evita culpar a la página o a los tiempos («la lista tarda en cargar») cuando el problema es la propia prueba.</Fragment>
+</CodeExample>
+
+El error real que produce el ejemplo en TypeScript y JavaScript (en C#, Java y Python el texto empieza con `Locator expected to have count` y trae los mismos datos):
+
+```text
+expect(locator).toHaveCount(expected) failed
+
+Locator:  getByRole('list', { name: 'Pedidos' }).getByRole('listitem')
+Expected: 3
+Received: 0
+Timeout:  2000ms
+
+Call log:
+  - Expect "toHaveCount" getByRole('list', { name: 'Pedidos' }).getByRole('listitem') with timeout 2000ms
+  - waiting for getByRole('list', { name: 'Pedidos' }).getByRole('listitem')
+    20 × locator resolved to 0 elements
+       - unexpected value "0"
+```
+
+Cómo leerlo:
+
+- **`Expected: 3` / `Received: 0`**: la página nunca tuvo pedidos durante todo el timeout. No es que «faltó un poco»: no hubo ni uno.
+- **`20 × locator resolved to 0 elements`**: Playwright reintentó muchas veces (el número varía) y siempre encontró una lista vacía. Esperar más no cambiaría nada.
+- La pregunta correcta es **«¿qué tenía que pasar para que aparezcan los pedidos?»**. Aquí, el clic en **Cargar pedidos**.
+
+Si el error no basta, **reprodúcelo**: ejecuta solo esa prueba, varias veces si es intermitente, y graba un trace.
+
+## Paso 2: grabar un trace
+
+Un trace es un archivo `.zip` con todo lo que pasó en la prueba: cada acción, una instantánea del DOM antes y después, capturas, consola, red y el código fuente. Se abre después, sin volver a ejecutar la prueba. Es la herramienta más útil para un fallo que solo ocurre en CI.
+
+### En Playwright Test (TypeScript y JavaScript): desde la configuración
+
+En TypeScript y JavaScript, lo recomendado es activar el trace en `playwright.config.ts` (`playwright.config.js` en JavaScript) y no tocar las pruebas:
+
+```ts
+// playwright.config.ts
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+	retries: process.env.CI ? 2 : 0,
+	use: {
+		trace: 'on-first-retry',
+	},
+});
+```
+
+| Valor de `trace` | Graba | Conserva |
+|---|---|---|
+| `'off'` (por defecto) | Nada | — |
+| `'on'` | Todas las ejecuciones | Todas (pesado, solo para investigar) |
+| `'on-first-retry'` | Solo el primer reintento | Ese trace. **Sin `retries`, nunca graba nada.** |
+| `'on-all-retries'` | Todos los reintentos | Todos esos traces |
+| `'retain-on-failure'` | Todas las ejecuciones | Solo las que fallaron |
+| `'retain-on-first-failure'` | Solo la primera ejecución | Solo si falló |
+| `'retain-on-failure-and-retries'` | Todas las ejecuciones | Las que fallaron y los reintentos |
+
+`on-first-retry` es un buen equilibrio para CI: no paga el costo de grabar cuando todo pasa a la primera. Para investigar un fallo concreto sin cambiar la configuración, la opción de línea de comandos `--trace` fuerza un modo: `npx playwright test pedidos.spec.ts --trace on`.
+
+Los traces que genera la configuración incluyen también las aserciones (`expect`) y se enlazan desde el reporte HTML.
+
+### En Python: opciones de pytest-playwright
+
+`pytest-playwright` tiene su propia opción de línea de comandos: `pytest --tracing retain-on-failure` graba todas las pruebas y conserva el trace de las que fallaron en la carpeta `test-results/`. Acepta `on`, `off` y `retain-on-failure`.
+
+### Con la Tracing API
+
+Cuando no puedes usar la configuración (C#, Java, un script fuera de un test runner, o un trace a medida en Python), el trace se graba con la API `Tracing` del contexto.
+
+<CodeExample id="trace-viewer-y-diagnostico/grabar-trace" title="Grabar un trace con la Tracing API">
+	<Fragment slot="what">En TypeScript y JavaScript, graba un trace alrededor de un flujo y lo guarda en la carpeta de resultados de la prueba (`test.info().outputPath`); en Python, lo mismo en `tmp_path` de pytest, y en Java, en una carpeta temporal. En C#, empieza el trace en `SetUp` y en `TearDown` lo guarda **solo si la prueba falló**, en una carpeta temporal.</Fragment>
+	<Fragment slot="why">`Screenshots` arma la línea de tiempo, `Snapshots` guarda el DOM y la red de cada acción y `Sources` incluye el código de la prueba. En C#, `Microsoft.Playwright.NUnit` no tiene una opción `trace` como la de Playwright Test: el patrón de `SetUp`/`TearDown` es el que propone la documentación oficial de .NET. Pasar `Path = null` a `StopAsync` descarta el trace de las pruebas que pasaron. En Java, `setSources(true)` solo incluye el código si la variable de entorno `PLAYWRIGHT_JAVA_SRC` apunta a la carpeta de las fuentes; por eso el ejemplo no lo activa.</Fragment>
+	<Fragment slot="avoids">Evita acumular un trace por cada prueba que pasa (ocupan espacio y nadie los mira) y escribir archivos generados dentro del repositorio.</Fragment>
+	<Fragment slot="alternative">En TypeScript y JavaScript, la Tracing API no registra las aserciones `expect`, solo las acciones del navegador y la red. Si usas Playwright Test, prefiere la opción `trace` de la configuración.</Fragment>
+</CodeExample>
+
+<Aside type="caution" title="Sin stop no hay archivo">
+El trace se va acumulando y solo se escribe en disco al llamar a `stop` (`StopAsync`) con una ruta. Si la prueba lanza una excepción antes de llegar a esa línea, no hay trace justo cuando más lo necesitas. Por eso los ejemplos en TypeScript, JavaScript, Java y Python lo detienen en un `finally` y el de C#, en `TearDown`, que NUnit ejecuta aunque la prueba falle.
+</Aside>
+
+## Paso 3: abrir el trace
+
+| Desde | Comando o acción |
+|---|---|
+| TypeScript / JavaScript | `npx playwright show-trace test-results/<carpeta-de-la-prueba>/trace.zip` |
+| C# | `pwsh bin/Debug/net10.0/playwright.ps1 show-trace <ruta>/trace.zip` (el script se genera al compilar el proyecto) |
+| Java | `mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="show-trace <ruta>/trace.zip"` |
+| Python | `playwright show-trace test-results/<carpeta-de-la-prueba>/trace.zip` |
+| Reporte HTML (Playwright Test) | `npx playwright show-report` y el enlace del trace en la prueba fallida |
+| Navegador | Arrastra el `.zip` a [trace.playwright.dev](https://trace.playwright.dev) |
+
+Según la documentación de Playwright, trace.playwright.dev carga el trace por completo en tu navegador y no envía los datos a ningún servidor. Aun así, un trace contiene todo lo que mostró la página (datos de prueba, cookies, cabeceras): trátalo como información sensible y no lo compartas por canales públicos.
+
+Qué muestra cada panel:
+
+| Panel | Para qué sirve al diagnosticar |
+|---|---|
+| **Actions** | Lista de acciones con su Locator y duración. La que falló aparece marcada. Empieza por ahí. |
+| **Before / Action / After** | Instantáneas del DOM antes, durante (con el punto exacto del clic) y después de la acción. Se pueden inspeccionar como una página real. |
+| **Timeline** | Tira de capturas en el tiempo: muestra qué veía la persona en cada momento. |
+| **Call** y **Log** | Los datos de la acción y el mismo call log del mensaje de error, paso a paso. |
+| **Errors** | El mensaje de error y la línea donde ocurrió. |
+| **Console** | Mensajes de la consola del navegador: errores de JavaScript de la aplicación suelen explicar por qué algo no apareció. |
+| **Network** | Todas las peticiones con su estado. Un 500 o una petición pendiente explica una lista vacía. |
+| **Source** | La línea de la prueba que ejecutó la acción seleccionada. |
+| **Metadata** | Navegador, tamaño de la ventana y duración: útil para comparar local con CI. |
+
+Volviendo al ejemplo de la lista vacía: en el trace, la instantánea *After* de la aserción muestra la lista vacía y el botón **Cargar pedidos** sin pulsar, y la pestaña *Network* no tiene ninguna petición de pedidos. Las dos pistas apuntan a la prueba, no a la aplicación.
+
+## Nombrar los pasos
+
+Un trace de 40 acciones sin estructura es difícil de leer. Agrupar las acciones por intención («Cargar los pedidos», «Exportar») hace que el fallo diga en qué parte del flujo ocurrió.
+
+<CodeExample id="trace-viewer-y-diagnostico/pasos" title="Agrupar acciones con un nombre">
+	<Fragment slot="what">Divide el flujo en pasos con nombre: abrir la pantalla, cargar los pedidos y exportar.</Fragment>
+	<Fragment slot="why">En TypeScript y JavaScript, `test.step` es parte de Playwright Test: el paso aparece con su nombre en el reporte y en el trace, así que se ve en qué paso falló la prueba. En C# no existe `test.step`; lo más cercano es `Tracing.GroupAsync` / `GroupEndAsync`, que agrupa las acciones **solo dentro del trace** (no en el reporte de NUnit) y solo tiene efecto si el trace está grabando. En Java y en Python pasa lo mismo: no hay `test.step` y se usa `context.tracing().group()` / `groupEnd()` (`group()` / `group_end()` en Python).</Fragment>
+	<Fragment slot="avoids">Evita reportes y traces donde hay que leer acción por acción para entender qué intentaba hacer la prueba.</Fragment>
+	<Fragment slot="alternative">TypeScript y JavaScript también tienen `context.tracing.group()`, pero la documentación recomienda `test.step` cuando está disponible.</Fragment>
+</CodeExample>
+
+<Aside type="note">
+Cada `GroupAsync` (`group` en Java y Python) necesita su `GroupEndAsync` (`groupEnd`, `group_end`): si lo olvidas, las acciones siguientes quedan dentro del grupo anterior. Los grupos se pueden anidar.
+</Aside>
+
+## Depuración interactiva
+
+El trace sirve para entender lo que **ya pasó**. Cuando necesitas ver la prueba **mientras se ejecuta**, ir paso a paso o probar Locators en vivo, usa el Inspector.
+
+| Herramienta | TypeScript / JavaScript (Playwright Test) | C# (NUnit) | Java (JUnit) | Python (pytest) |
+|---|---|---|---|---|
+| **Inspector** paso a paso | `npx playwright test pedidos.spec.ts:12 --debug` | `$env:PWDEBUG=1` y luego `dotnet test` (PowerShell) o `PWDEBUG=1 dotnet test` (bash) | `PWDEBUG=1 mvn test` (bash) o `$env:PWDEBUG=1` y luego `mvn test` (PowerShell) | `PWDEBUG=1 pytest -s` |
+| **Modo headed** (ver el navegador) | `npx playwright test --headed` | `dotnet test -- Playwright.LaunchOptions.Headless=false` | `launch(new BrowserType.LaunchOptions().setHeadless(false))` | `pytest --headed` |
+| **Más lento** | `use: { launchOptions: { slowMo: 500 } }` | `<SlowMo>500</SlowMo>` dentro de `<LaunchOptions>` en el `.runsettings` | `new BrowserType.LaunchOptions().setSlowMo(500)` | `pytest --slowmo 500` |
+| **UI Mode** (ejecutar, filtrar, ver el trace en vivo, *watch*) | `npx playwright test --ui` | No existe: es parte de Playwright Test | No existe | No existe |
+| **Logs de la API** | `DEBUG=pw:api` | `DEBUG=pw:api` (en PowerShell, `$env:DEBUG="pw:api"`) | `DEBUG=pw:api` | `DEBUG=pw:api` |
+
+`--debug` equivale a `PWDEBUG=1` más `--timeout=0 --max-failures=1 --headed --workers=1`: abre el navegador visible, abre el Inspector y quita el timeout para que puedas avanzar a tu ritmo. Indicar `archivo:línea` ejecuta solo esa prueba.
+
+Para no avanzar acción por acción desde el principio, marca dónde quieres detenerte con `pause`:
+
+<CodeExample id="trace-viewer-y-diagnostico/pausa" title="Detenerse en un punto concreto">
+	<Fragment slot="what">Muestra dónde colocar `page.pause()` (`Page.PauseAsync()` en C#, `page.pause()` en Java y Python): después del clic en **Cargar pedidos** y antes de la aserción. En el ejemplo está comentado.</Fragment>
+	<Fragment slot="why">Al llegar a `pause`, la ejecución se detiene y puedes inspeccionar la página, probar Locators en el Inspector y continuar con *Resume*. Solo funciona con el navegador visible (modo headed), que es lo que activan `--debug` y `PWDEBUG=1`.</Fragment>
+	<Fragment slot="avoids">Evita recorrer con el Inspector todas las acciones previas para llegar a la que te interesa.</Fragment>
+</CodeExample>
+
+<Aside type="danger" title="No subas un pause al repositorio">
+Una prueba con `pause()` activo se queda esperando a que alguien pulse *Resume*. En CI nadie lo hará: la prueba se cuelga hasta su timeout. Bórralo antes de hacer commit.
+</Aside>
+
+## Evidencia: capturas y video
+
+El trace ya contiene capturas, pero a veces se necesita una evidencia simple en el reporte: una imagen de cómo quedó la pantalla.
+
+<CodeExample id="trace-viewer-y-diagnostico/evidencia" title="Adjuntar una captura al resultado de la prueba" notApplicable={['python']}>
+	<Fragment slot="what">Toma una captura de página completa después de cargar los pedidos y la adjunta al resultado de la prueba.</Fragment>
+	<Fragment slot="why">En TypeScript y JavaScript, `test.info().attach` la muestra en el reporte HTML sin escribir un archivo a mano. En C#, `ScreenshotAsync` la guarda en una ruta temporal y `TestContext.AddTestAttachment` de NUnit la asocia al resultado. En Java, `TestReporter.publishFile` de JUnit (5.12 o superior) crea el archivo en la carpeta de resultados de la prueba (con Maven, dentro de `target/junit-jupiter/`), `screenshot` lo escribe ahí y JUnit lo reporta a las herramientas que muestran archivos adjuntos.</Fragment>
+	<Fragment slot="avoids">Evita capturas sueltas con nombres fijos que se pisan entre pruebas paralelas y no se sabe a qué ejecución pertenecen.</Fragment>
+	<Fragment slot="alternative">En Playwright Test, la configuración también automatiza la evidencia: `screenshot: 'only-on-failure'` y `video: 'retain-on-failure'` dentro de `use` (el video acepta los mismos modos que `trace`). En Python, `pytest-playwright` no adjunta archivos al resultado de la prueba; sus opciones `--screenshot only-on-failure` y `--video retain-on-failure` guardan la evidencia en `test-results/`.</Fragment>
+</CodeExample>
+
+## Depurar a ciegas vs diagnosticar
+
+<BadPractice title="«arreglar» un fallo con esperas, timeouts y console.log" id="trace-viewer-y-diagnostico/debug-a-ciegas">
+	La prueba ahora pasa, pero nadie sabe por qué falló. La espera fija suma un segundo a cada ejecución, el timeout de 60 segundos hace que el próximo fallo tarde un minuto en reportarse, y el `console.log` imprime un dato que el mensaje de error y el trace ya mostraban. Si la causa era un dato que faltaba o una petición que falló, sigue ahí, esperando a reaparecer en CI.
+</BadPractice>
+
+<BestPractice title="leer el error, mirar el trace y corregir la causa">
+	1. Lee el mensaje completo: qué esperaba, qué recibió y qué dice el call log.
+	2. Reproduce el fallo con el trace activado (`--trace on` o la Tracing API).
+	3. Abre el trace, ve a la acción que falló y compara las instantáneas *Before* y *After*, la consola y la red.
+	4. Corrige lo que encontraste: el Locator, el paso que faltaba, los datos de prueba o un error real de la aplicación (que entonces se reporta, no se esconde).
+</BestPractice>
+
+## Errores comunes
+
+- **No se genera ningún trace con `trace: 'on-first-retry'`**: sin `retries` configurados no hay reintentos, así que no hay «primer reintento» que grabar. Activa `retries` en CI o usa `retain-on-failure`.
+- **El archivo del trace no existe**: se llamó a `start` pero no a `stop` con una ruta, o la prueba falló antes de llegar a `stop`. Detén el trace en un `finally` o en `TearDown`.
+- **En C#, el trace no se guarda aunque la prueba falló**: el `TearDown` que decide si guardar no está en la clase de la prueba ni en una clase base, o la condición no considera la prueba como fallida (compara `Result.Outcome.Status` con `TestStatus.Failed`, que incluye tanto aserciones fallidas como excepciones).
+- **El trace de la Tracing API no muestra los `expect` (TypeScript y JavaScript)**: es el comportamiento documentado. Usa la opción `trace` de la configuración.
+- **`pause()` no hace nada o la prueba se cuelga**: sin modo headed, `pause` no puede mostrar el Inspector; ejecuta con `--debug` o `PWDEBUG=1`. Y si se cuelga en CI, quedó un `pause` en el código.
+- **El fallo solo ocurre en CI y en local pasa siempre**: compara la pestaña *Metadata* y la línea de tiempo de ambos traces. Suele ser un tamaño de ventana distinto, datos distintos o un servicio más lento, no «Playwright fallando al azar».
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| Captura manual con `ITakesScreenshot.GetScreenshot()` en el `catch` o el `TearDown` | Trace con DOM, capturas, red y consola de cada acción | El trace permite inspeccionar el estado de la página antes y después de cada paso, no solo una imagen final. |
+| Logs del driver y del navegador, según el driver y el navegador | Pestañas *Console* y *Network* del trace | En Playwright vienen en el mismo archivo, ordenadas junto a las acciones. |
+| Puntos de interrupción del IDE y el navegador abierto | Inspector (`--debug`, `PWDEBUG=1`) y `pause()` | El Inspector permite avanzar acción por acción y probar Locators sobre la página real. |
+| `Thread.Sleep` para «ver qué pasa» | `slowMo` o modo headed | Ninguno de los dos debe quedar en la configuración de CI. |
+| Excepciones como `NoSuchElementException` sin contexto | Mensaje con Locator, valor esperado, recibido y call log | La mayoría de los fallos se explican sin abrir ninguna herramienta. |

@@ -1,0 +1,148 @@
+---
+title: Tablas y listas dinámicas
+description: Encontrar filas por su contenido, leer celdas por columna, comprobar el orden y el filtro, paginar y esperar listas que cargan tarde sin depender de posiciones.
+category: web
+level: intermediate
+order: 10
+readingTime: 15
+tags:
+  - tablas
+  - listas
+  - filas
+  - celdas
+  - row
+  - cell
+  - columnheader
+  - filter
+  - hasText
+  - has
+  - toHaveCount
+  - toHaveText
+  - allTextContents
+  - ordenar
+  - filtrar
+  - paginación
+  - nth-child
+  - strict mode violation
+prerequisites:
+  - Locators
+  - Assertions
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Las tablas y las listas son donde más se rompen las pruebas: las filas cambian de lugar al ordenar, desaparecen al filtrar, llegan en páginas o tarde. Una prueba que dice «la tercera fila» funciona el día que se escribe y falla el día que alguien agrega un pedido. Este módulo enseña a localizar los datos por lo que son, no por dónde están.
+
+## Qué aprenderás
+
+- Cómo encontrar una fila por el contenido de una celda y actuar sobre un botón de esa fila.
+- Cómo leer una celda por el nombre de su columna en lugar de un índice fijo.
+- Cómo comprobar el orden y el resultado de un filtro con `toHaveText` y `toHaveCount`.
+- Cómo recorrer una paginación con un bucle acotado que espera cada página.
+- Por qué `count()` y `allTextContents()` no esperan, y cuándo sí conviene usarlos.
+
+### La página de práctica
+
+Los ejemplos se ejecutan contra una tabla de 12 pedidos (con el título «Pedidos») que muestra 5 por página. Las columnas son **Pedido**, **Cliente**, **Estado**, **Total** y **Acciones**, que tiene un botón **Cancelar** en cada fila. Los encabezados son botones que ordenan la tabla y marcan la columna con `aria-sort`. El campo **Filtrar pedidos** aplica la búsqueda 300 ms después de la última tecla, cada página nueva tarda 200 ms en llegar y la lista **Últimos movimientos** se carga 1 segundo después de abrir la página. En cada cambio la app vuelve a dibujar la tabla completa: las filas son elementos nuevos.
+
+## Encontrar una fila por su contenido
+
+<CodeExample id="tablas-y-listas/accion-en-fila" title="Actuar sobre el botón de una fila">
+	<Fragment slot="what">Localiza la fila del pedido `PED-1003`, hace clic en su botón **Cancelar** y comprueba que la fila muestra «Cancelado» y que su botón quedó deshabilitado.</Fragment>
+	<Fragment slot="why">`getByRole('row')` devuelve todas las filas y `filter({ hasText })` se queda con las que contienen ese texto. Las acciones y las búsquedas posteriores se encadenan sobre la fila, así que el botón **Cancelar** es el de ese pedido aunque haya uno igual en cada fila.</Fragment>
+	<Fragment slot="avoids">Evita la «strict mode violation» de buscar `getByRole('button', { name: 'Cancelar' })` en toda la página (hay uno por fila) y evita cancelar otro pedido por usar una posición.</Fragment>
+	<Fragment slot="alternative">`hasText` busca el texto dentro de la fila, sin distinguir mayúsculas, y también como parte de otro texto. Si el dato puede aparecer dentro de otro, usa `filter({ has: ... })` con una celda exacta, como en el siguiente ejemplo.</Fragment>
+</CodeExample>
+
+## Leer una celda por su columna
+
+<CodeExample id="tablas-y-listas/celda-por-columna" title="La celda Estado de un pedido">
+	<Fragment slot="what">Lee los textos de los encabezados, calcula en qué posición está **Estado**, localiza la fila cuya celda es exactamente `PED-1003` y comprueba que su estado es «Pendiente».</Fragment>
+	<Fragment slot="why">Playwright no tiene un locator «celda de la columna X». Usar `nth` con un número fijo funciona hasta que alguien agrega o mueve una columna; calcular el índice a partir del encabezado hace que la prueba siga el cambio. `filter({ has })` con `exact: true` elige la fila por una celda que coincide entera, no por un fragmento de texto.</Fragment>
+	<Fragment slot="avoids">Evita pruebas que leen la columna equivocada sin fallar (por ejemplo, el total en lugar del estado) cuando cambia el diseño de la tabla, y filas elegidas por un texto que aparece en varias.</Fragment>
+	<Fragment slot="alternative">`allTextContents()` no espera: aquí se puede usar porque los encabezados están en la página desde el inicio. Si la tabla se carga después, comprueba primero que está lista con una aserción (por ejemplo, `toHaveCount` sobre los encabezados).</Fragment>
+</CodeExample>
+
+<Aside type="note" title="La fila del encabezado también es una fila">
+Para Playwright, la fila de `<thead>` tiene el rol `row`, igual que las de datos; sus celdas tienen el rol `columnheader` y las de datos, `cell`. Por eso `getByRole('row')` en esta tabla devuelve 6 filas, no 5. Para quedarte solo con las filas de datos, filtra las que tienen una celda: `getByRole('row').filter({ has: page.getByRole('cell') })`.
+</Aside>
+
+## Comprobar el orden
+
+<CodeExample id="tablas-y-listas/ordenar" title="Ordenar por cliente">
+	<Fragment slot="what">Hace clic en el encabezado **Cliente**, comprueba que la columna quedó marcada con `aria-sort="ascending"` y que las filas de datos aparecen en el orden esperado.</Fragment>
+	<Fragment slot="why">Con un arreglo, `toHaveText` comprueba tres cosas a la vez: que hay tantas filas como valores, que cada fila coincide con su valor y que el orden es ese. Además reintenta, así que no importa si la app tarda en volver a dibujar. Con expresiones regulares basta con que cada fila contenga el nombre.</Fragment>
+	<Fragment slot="avoids">Evita leer los textos una sola vez justo después del clic, compararlos y obtener el orden anterior; y evita pruebas que comprueban solo la primera fila y no detectan un orden roto en el resto.</Fragment>
+	<Fragment slot="alternative">Si no conoces los datos de antemano (vienen de un backend con datos variables), lee los valores con `allTextContents()` después de una aserción web-first, y compara la lista con una copia ordenada.</Fragment>
+</CodeExample>
+
+## Filtrar y comprobar lo que queda
+
+<CodeExample id="tablas-y-listas/filtrar" title="Filtrar por estado">
+	<Fragment slot="what">Escribe «Pendiente» en **Filtrar pedidos** y comprueba que quedan exactamente 3 filas de datos: `PED-1003`, `PED-1006` y `PED-1009`.</Fragment>
+	<Fragment slot="why">`toHaveCount` reintenta hasta que la cantidad coincide, así que espera los 300 ms que la app tarda en filtrar. La segunda aserción comprueba cuáles son las filas: una cantidad correcta con las filas equivocadas también es un error.</Fragment>
+	<Fragment slot="avoids">Evita comprobar solo que aparece lo esperado: un filtro que no filtra nada también muestra los pedidos pendientes, junto con todos los demás.</Fragment>
+	<Fragment slot="alternative">Si solo importa que no quede ninguna fila que no cumpla el filtro, `expect(filas.filter({ hasNotText: 'Pendiente' })).toHaveCount(0)` lo dice directamente.</Fragment>
+</CodeExample>
+
+## Recorrer una paginación
+
+<CodeExample id="tablas-y-listas/paginacion" title="Buscar un pedido página por página">
+	<Fragment slot="what">Mientras el pedido `PED-1011` no está visible, hace clic en **Siguiente** y espera a que el indicador muestre la página nueva; si llega a 10 páginas sin encontrarlo, falla con un mensaje claro. Al final comprueba el cliente de ese pedido.</Fragment>
+	<Fragment slot="why">`isVisible()` responde al instante, sin esperar. Si se volviera a preguntar justo después del clic, la página anterior seguiría en pantalla y el bucle haría clic otra vez, saltándose páginas. Esperar el indicador con una aserción asegura que cada vuelta mira la página que acaba de cargar. El límite convierte un bucle que podría no terminar en una prueba que falla con un motivo.</Fragment>
+	<Fragment slot="avoids">Evita bucles infinitos cuando el registro no existe, páginas saltadas por mirar antes de que cargue la nueva, y pruebas que fallan por timeout sin decir qué buscaban.</Fragment>
+	<Fragment slot="alternative">Si la app tiene un filtro o una búsqueda, úsalo: es más rápido y más estable que recorrer páginas. Recorre la paginación solo cuando la paginación es lo que estás probando.</Fragment>
+</CodeExample>
+
+## Listas que cargan tarde
+
+<BadPractice title="contar una vez y recorrer con índices" id="tablas-y-listas/conteo-inmediato">
+	La prueba lee `count()` cuando la lista todavía está cargando: obtiene 0, el bucle no se ejecuta y la prueba termina en verde sin haber comprobado ningún movimiento. `count()` no espera; devuelve lo que hay en ese momento. Con una lista que llega por partes, el resultado es peor: recorre solo los primeros elementos.
+</BadPractice>
+
+<CodeExample id="tablas-y-listas/lista-con-retraso" title="Esperar una lista que se carga con retraso">
+	<Fragment slot="what">Comprueba con `toHaveText` que la lista **Últimos movimientos** tiene exactamente cuatro elementos y en qué orden. Después lee los textos con `allTextContents()` para un cálculo que una aserción no hace: cuáles son cancelaciones.</Fragment>
+	<Fragment slot="why">La aserción reintenta hasta que la lista llega completa, así que la espera de 1 segundo no necesita código adicional. `allTextContents()` (como `count()` y `all()`) no espera: se usa después de la aserción, cuando la lista ya está estable, y solo si necesitas los datos.</Fragment>
+	<Fragment slot="avoids">Evita pruebas que pasan con una lista vacía, esperas fijas como `waitForTimeout` y bucles que recorren una lista a medio cargar.</Fragment>
+	<Fragment slot="alternative">Si solo importa la cantidad, `toHaveCount(4)` es suficiente. Para recorrer los elementos y actuar sobre cada uno existe `all()`, con la misma regla: primero espera a que la lista esté completa.</Fragment>
+</CodeExample>
+
+## Posición o contenido
+
+<BadPractice title="localizar una celda por su posición" id="tablas-y-listas/por-posicion">
+	`tbody tr:nth-child(3) td:nth-child(2)` (o su equivalente XPath `//tbody/tr[3]/td[2]`) significa «fila 3, columna 2». Hoy es el cliente de `PED-1003` y la prueba pasa. Cuando alguien ordena la tabla, agrega un pedido o cambia el orden predeterminado, la misma posición es otro pedido: la prueba falla por un motivo que no tiene que ver con lo que prueba, o peor, sigue pasando con datos que no son los que crees.
+</BadPractice>
+
+<BestPractice title="la fila por su contenido y una aserción web-first" id="tablas-y-listas/fila-por-contenido">
+	La fila se localiza por su número de pedido y se comprueba con `toContainText`. Al ordenar, la app vuelve a dibujar la tabla y la fila cambia de lugar; el locator se resuelve otra vez en cada aserción y encuentra la misma fila de datos. La prueba solo falla si el pedido deja de tener ese cliente.
+</BestPractice>
+
+## Errores comunes
+
+- **«strict mode violation» al actuar sobre una fila**: el filtro coincide con más de una fila. `hasText` busca el texto como parte de otro: en una tabla con los pedidos `PED-101` y `PED-1010`, `hasText: 'PED-101'` encuentra los dos. Usa un texto más específico o `filter({ has: page.getByRole('cell', { name: 'PED-1011', exact: true }) })`.
+- **«strict mode violation» en el botón de una fila**: buscaste `getByRole('button', { name: 'Cancelar' })` en la página y hay uno por fila. Búscalo dentro de la fila.
+- **`toHaveCount` espera una fila más de las que ves**: la fila del encabezado también es una `row`. Filtra las filas que tienen celdas `cell`.
+- **El orden comprobado es el anterior**: leíste los textos con `allTextContents()` justo después del clic. Usa `toHaveText([...])`, que reintenta.
+- **La prueba de paginación salta páginas o se queda en un bucle**: preguntas con `isVisible()` antes de que cargue la página nueva, o el bucle no tiene límite. Espera una señal de la página nueva y acota las vueltas.
+- **Una lista «vacía» pasa la prueba**: un bucle sobre `count()` o `all()` no se ejecuta si la lista aún no cargó. Comprueba primero la cantidad o el contenido con una aserción.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `FindElements(By.XPath("//tr[td='PED-1003']"))` | `getByRole('row').filter({ hasText: 'PED-1003' })` | El filtro se lee como la intención y no depende de la estructura del HTML. |
+| `FindElement(By.CssSelector("tr:nth-child(3) td:nth-child(2)"))` | Fila por contenido + columna calculada desde el encabezado | La posición cambia al ordenar, filtrar o paginar; el contenido no. |
+| `FindElements(...).Count` + `Assert` | `toHaveCount(n)` | La aserción reintenta hasta que la lista tiene esa cantidad; `Count` se lee una sola vez. |
+| Recorrer `FindElements` y comparar textos | `toHaveText([...])` | Un arreglo comprueba cantidad, texto y orden con reintento. |
+| `StaleElementReferenceException` cuando la tabla se vuelve a dibujar | Locators que se resuelven en cada uso | Un locator no guarda el elemento: lo vuelve a buscar en cada acción y aserción. |

@@ -1,0 +1,36 @@
+---
+/** Añade el control de progreso al final de cualquier página que sea un módulo. */
+import Default from '@astrojs/starlight/components/Footer.astro';
+import Progress from '../Progress.astro';
+import { getModule } from '../../lib/modules';
+
+const { entry } = Astro.locals.starlightRoute;
+const module = getModule(entry.data);
+---
+
+{
+	module && (
+		<div class="module-end">
+			<p>¿Terminaste el módulo?</p>
+			<Progress module={entry.id} />
+		</div>
+	)
+}
+<Default />
+
+<style>
+	.module-end {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-top: 3rem;
+		padding: 1rem 0;
+		border-top: 1px solid var(--pg-border);
+	}
+	.module-end p {
+		margin: 0;
+		color: var(--sl-color-gray-3);
+	}
+</style>

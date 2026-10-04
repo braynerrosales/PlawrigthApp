@@ -1,0 +1,80 @@
+<!doctype html>
+<!--
+  Página de práctica del módulo Iframes, popups, tabs y dialogs. Reúne los tres casos que
+  obligan a salir de la página principal: un formulario de pago dentro de un iframe, unos
+  términos que se abren en una pestaña nueva y diálogos nativos (confirm y prompt).
+-->
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Checkout QA</title>
+		<style>
+			iframe { width: 100%; height: 160px; border: 1px solid; }
+		</style>
+	</head>
+	<body>
+		<h1>Checkout</h1>
+		<p>Total a pagar: $ 49.900</p>
+
+		<!-- Como en una pasarela real, el pago vive en otro documento: el iframe. -->
+		<iframe title="Pago con tarjeta"></iframe>
+
+		<p>
+			<label><input type="checkbox" /> Acepto los términos y condiciones</label>
+			<button type="button" id="ver-terminos">Ver términos y condiciones</button>
+		</p>
+
+		<section>
+			<h2>Tareas</h2>
+			<ul aria-label="Tareas">
+				<li><span>Revisar reporte</span> <button type="button">Renombrar</button> <button type="button">Eliminar</button></li>
+				<li><span>Actualizar casos de prueba</span> <button type="button">Renombrar</button> <button type="button">Eliminar</button></li>
+			</ul>
+		</section>
+
+		<script>
+			// Documento del iframe de pago: tiene sus propios campos y su propio mensaje.
+			document.querySelector('iframe').srcdoc = `
+				<!doctype html>
+				<html lang="es">
+					<body>
+						<label for="tarjeta">Número de tarjeta</label>
+						<input id="tarjeta" inputmode="numeric" />
+						<button type="button">Pagar</button>
+						<p role="status"></p>
+						<script>
+							document.querySelector('button').addEventListener('click', () => {
+								const digits = document.getElementById('tarjeta').value.replace(/\\D/g, '');
+								document.querySelector('[role="status"]').textContent =
+									digits.length === 16 ? 'Pago aprobado' : 'Número de tarjeta inválido';
+							});
+						<\/script>
+					</body>
+				</html>`;
+
+			// Los términos se abren en una pestaña nueva, como un link con target="_blank".
+			document.getElementById('ver-terminos').addEventListener('click', () => {
+				const tab = window.open('');
+				tab.document.write(`
+					<title>Términos y condiciones</title>
+					<h1>Términos y condiciones</h1>
+					<p>Versión vigente: octubre de 2026</p>
+					<p>El cargo se realiza en pesos chilenos.</p>`);
+				tab.document.close();
+			});
+
+			// Tareas: Eliminar pide confirmación y Renombrar pide el nombre nuevo.
+			document.querySelector('[aria-label="Tareas"]').addEventListener('click', (event) => {
+				const item = event.target.closest('li');
+				const name = item?.querySelector('span');
+				if (!item || event.target.tagName !== 'BUTTON') return;
+				if (event.target.textContent === 'Eliminar') {
+					if (confirm(`¿Eliminar «${name.textContent}»?`)) item.remove();
+				} else {
+					const newName = prompt('Nuevo nombre de la tarea', name.textContent);
+					if (newName) name.textContent = newName;
+				}
+			});
+		</script>
+	</body>
+</html>

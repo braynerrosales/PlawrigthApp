@@ -1,0 +1,92 @@
+<!doctype html>
+<!--
+  Página de práctica del módulo Locators. Los snippets de C#, TypeScript y JavaScript la
+  cargan con setContent para que cada ejemplo publicado se ejecute de verdad.
+  La estructura de <div> es intencionalmente "legacy": los ejemplos de selectores frágiles
+  (nth-child, XPath absoluto) dependen de ella.
+-->
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Tienda QA</title>
+	</head>
+	<body>
+		<header>
+			<h1>Tienda QA</h1>
+			<nav aria-label="Principal">
+				<a href="#productos">Productos</a>
+				<a href="#cuenta">Mi cuenta</a>
+			</nav>
+			<span>Carrito: <span data-testid="cart-count">0</span></span>
+		</header>
+		<div class="layout">
+			<div class="search">
+				<input type="search" placeholder="Buscar productos" />
+			</div>
+			<div class="login" id="cuenta">
+				<h2>Iniciar sesión</h2>
+				<form id="login-form">
+					<label for="email">Correo electrónico</label>
+					<input id="email" type="email" />
+					<label for="password">Contraseña</label>
+					<input id="password" type="password" />
+					<label><input type="checkbox" name="remember" /> Recordarme</label>
+					<button type="submit">Iniciar sesión</button>
+				</form>
+				<p role="status"></p>
+			</div>
+			<div class="products" id="productos">
+				<h2>Productos</h2>
+				<p>Envío gratis en pedidos mayores a $50</p>
+				<ul data-testid="product-list">
+					<li class="product-card">
+						<h3>Teclado mecánico</h3>
+						<p>$45</p>
+						<button type="button">Agregar al carrito</button>
+					</li>
+					<li class="product-card">
+						<h3>Mouse inalámbrico</h3>
+						<p>$20</p>
+						<button type="button">Agregar al carrito</button>
+					</li>
+					<li class="product-card">
+						<h3>Monitor 4K</h3>
+						<p>Agotado</p>
+						<button type="button" disabled>Agregar al carrito</button>
+					</li>
+				</ul>
+			</div>
+			<div class="settings">
+				<span id="settings-state">Cambios sin guardar</span>
+				<button type="button">Guardar</button>
+			</div>
+		</div>
+		<script>
+			// Igual que un framework SPA: cada actualización reemplaza el nodo en lugar de editarlo.
+			// Un Locator lo vuelve a encontrar; una referencia a un elemento antiguo quedaría obsoleta.
+			function rerender(selector, text) {
+				const old = document.querySelector(selector);
+				const fresh = old.cloneNode(false);
+				fresh.textContent = text;
+				old.replaceWith(fresh);
+			}
+
+			document.getElementById('login-form').addEventListener('submit', (event) => {
+				event.preventDefault();
+				const email = document.getElementById('email').value;
+				rerender('[role="status"]', email ? `Bienvenido, ${email}` : 'Ingresa tu correo');
+			});
+
+			for (const button of document.querySelectorAll('.product-card button')) {
+				button.addEventListener('click', () => {
+					const count = Number(document.querySelector('[data-testid="cart-count"]').textContent);
+					rerender('[data-testid="cart-count"]', String(count + 1));
+				});
+			}
+
+			document.querySelector('.settings button').addEventListener('click', () => {
+				rerender('#settings-state', 'Cambios guardados');
+			});
+		</script>
+	</body>
+</html>

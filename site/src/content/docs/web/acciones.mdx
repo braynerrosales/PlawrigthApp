@@ -1,0 +1,157 @@
+---
+title: Acciones e interacciones
+description: Escribir, hacer clic, marcar, elegir, pasar el mouse y arrastrar como lo haría una persona, y por qué no conviene saltarse los eventos de la página.
+category: web
+level: beginner
+order: 5
+readingTime: 20
+tags:
+  - acciones
+  - fill
+  - click
+  - press
+  - pressSequentially
+  - check
+  - selectOption
+  - hover
+  - dblclick
+  - dragTo
+  - type obsoleto
+prerequisites:
+  - Locators
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Una vez que tienes un buen Locator, actuar sobre él es una línea. Lo importante es elegir la acción que **genera los mismos eventos que una persona**, porque la aplicación reacciona a esos eventos: habilita botones, valida campos o muestra sugerencias.
+
+## Qué aprenderás
+
+- Qué acción usar para cada tipo de control: texto, teclas, checkboxes, radios, selects.
+- La diferencia entre `fill` y `pressSequentially`, y por qué `type` ya no se usa.
+- Cómo pasar el mouse, hacer doble clic y arrastrar elementos.
+- Por qué asignar valores con JavaScript produce pruebas que no prueban nada.
+
+### La página de práctica
+
+Los ejemplos se ejecutan contra un formulario de registro (nombre, correo, país, plan y términos) cuyo botón **Crear cuenta** solo se habilita cuando la aplicación recibe los eventos de cada campo, como en React o Angular. Incluye además un buscador de ayuda, un tooltip, un autocompletado de ciudades y una lista de tareas que se puede renombrar y reordenar.
+
+## Escribir en un campo: fill y clear
+
+<CodeExample id="acciones/fill" title="Completar y limpiar un campo">
+	<Fragment slot="what">Escribe un nombre en el campo, comprueba su valor, lo borra y comprueba que quedó vacío.</Fragment>
+	<Fragment slot="why">`fill` enfoca el campo, reemplaza todo su contenido y dispara el evento `input`, que es lo que escuchan los frameworks. `clear` hace lo mismo con un valor vacío.</Fragment>
+	<Fragment slot="avoids">Evita tener que borrar a mano el contenido previo con teclas: `fill` siempre reemplaza, no concatena.</Fragment>
+</CodeExample>
+
+## Teclas: press
+
+<CodeExample id="acciones/press" title="Buscar con Enter">
+	<Fragment slot="what">Escribe un término en el buscador y pulsa Enter para lanzar la búsqueda.</Fragment>
+	<Fragment slot="why">`press` envía una tecla o combinación (`Enter`, `Tab`, `Escape`, `Control+A`) al elemento, igual que el teclado. Es la forma de probar atajos y formularios que se envían con Enter.</Fragment>
+	<Fragment slot="avoids">Evita buscar un botón que no existe o forzar el envío con JavaScript cuando la funcionalidad real es «pulsar Enter».</Fragment>
+	<Fragment slot="alternative">Para atajos globales que no dependen de un elemento existe `page.keyboard.press(...)` (`Page.Keyboard.PressAsync` en C#).</Fragment>
+</CodeExample>
+
+## Tecla por tecla: pressSequentially
+
+<CodeExample id="acciones/press-sequentially" title="Autocompletado que escucha el teclado">
+	<Fragment slot="what">Escribe «Bue» carácter a carácter en el campo Ciudad y comprueba que la lista de sugerencias muestra solo «Buenos Aires».</Fragment>
+	<Fragment slot="why">Este autocompletado reacciona a eventos de teclado (`keyup`). `fill` solo genera el evento `input`, así que la lista nunca aparecería. `pressSequentially` genera las pulsaciones de cada tecla.</Fragment>
+	<Fragment slot="avoids">Evita creer que el autocompletado está roto cuando el problema es que la prueba no generó los eventos que la aplicación espera.</Fragment>
+	<Fragment slot="alternative">Usa `fill` siempre que funcione: es más rápido. Reserva `pressSequentially` para campos que dependen de teclas.</Fragment>
+</CodeExample>
+
+<Aside type="caution" title="type() está obsoleto">
+El método `type` de versiones anteriores está obsoleto. Usa `fill` para escribir un valor completo y `pressSequentially` cuando necesites eventos de teclado por cada carácter. Si migras código antiguo, revisa cada `type`: casi siempre debería ser `fill`.
+</Aside>
+
+## Checkboxes y radios: check y uncheck
+
+<CodeExample id="acciones/check" title="Checkboxes y radios">
+	<Fragment slot="what">Marca «Acepto los términos», desmarca «Recibir novedades», elige el plan Pro y comprueba el estado de cada control.</Fragment>
+	<Fragment slot="why">`check` y `uncheck` son idempotentes: dejan el control en el estado pedido y fallan si no lo consiguen. Un `click` simplemente invierte el estado, sea cual sea.</Fragment>
+	<Fragment slot="avoids">Evita pruebas que dependen del estado inicial: un `click` sobre una casilla ya marcada la desmarca sin que nadie lo note.</Fragment>
+	<Fragment slot="alternative">`setChecked(true|false)` (`SetCheckedAsync` en C#) cuando el estado deseado viene de un dato, por ejemplo en pruebas parametrizadas.</Fragment>
+</CodeExample>
+
+## Listas desplegables: selectOption
+
+<CodeExample id="acciones/select-option" title="Elegir una opción por su texto">
+	<Fragment slot="what">Elige «Chile» en el desplegable País y comprueba que el valor seleccionado es `cl`.</Fragment>
+	<Fragment slot="why">Elegir por `label` usa el texto que ve la persona. El valor interno (`cl`) es un detalle de implementación que puede cambiar sin que cambie la interfaz.</Fragment>
+	<Fragment slot="avoids">Evita abrir el desplegable con un clic y buscar la opción: en un `<select>` nativo eso no funciona igual en todos los navegadores.</Fragment>
+	<Fragment slot="alternative">Si el desplegable no es un `<select>` sino un componente propio (por ejemplo, una lista que se abre con un clic), se opera con `click` sobre el control y luego sobre la opción con `getByRole('option')`.</Fragment>
+</CodeExample>
+
+## Mouse: hover, dblclick y dragTo
+
+<CodeExample id="acciones/hover" title="Mostrar un tooltip">
+	<Fragment slot="what">Pasa el mouse sobre el botón «Más información» y comprueba el texto del tooltip que aparece.</Fragment>
+	<Fragment slot="why">`hover` mueve el puntero al centro del elemento y genera los eventos de mouse que muestran tooltips y menús.</Fragment>
+	<Fragment slot="avoids">Evita mostrar el tooltip cambiando estilos con JavaScript, lo que no prueba que aparezca con el mouse.</Fragment>
+</CodeExample>
+
+<CodeExample id="acciones/dblclick" title="Renombrar con doble clic">
+	<Fragment slot="what">Hace doble clic en el nombre de la lista, comprueba que aparece un campo de texto con el foco y escribe un nombre nuevo.</Fragment>
+	<Fragment slot="why">`dblclick` genera la secuencia completa de eventos de un doble clic real. Dos `click` seguidos no siempre la reproducen.</Fragment>
+	<Fragment slot="avoids">Evita pruebas que pasan en un navegador y fallan en otro por depender del intervalo entre dos clics.</Fragment>
+</CodeExample>
+
+<CodeExample id="acciones/drag-to" title="Arrastrar una tarea">
+	<Fragment slot="what">Arrastra la tarea «Revisar reporte» de la columna Pendiente a la columna Hecho y comprueba que quedó en Hecho.</Fragment>
+	<Fragment slot="why">`dragTo` mueve el mouse desde el centro del origen hasta el centro del destino y genera los eventos de arrastre que usa la aplicación.</Fragment>
+	<Fragment slot="avoids">Evita reproducir el arrastre con varios pasos de `mouse` a mano, que es más largo y más fácil de equivocar.</Fragment>
+	<Fragment slot="alternative">Para arrastres que dependen de posiciones exactas (un deslizador, un lienzo) existe la API de bajo nivel `page.mouse` (`Page.Mouse` en C#): `move`, `down` y `up`.</Fragment>
+</CodeExample>
+
+## No te saltes los eventos
+
+<BadPractice title="asignar el valor con JavaScript" id="acciones/js-value">
+	El campo muestra el texto, pero la aplicación guarda su estado a partir de los eventos `input`, que nunca ocurrieron. El botón sigue deshabilitado, o peor: el formulario envía datos vacíos. Una prueba así no reproduce lo que hace una persona.
+</BadPractice>
+
+<BestPractice title="usar la acción que usaría una persona" id="acciones/fill">
+	`fill`, `check`, `selectOption` y el resto generan los eventos reales y además esperan a que el elemento esté listo para recibirlos (ver [Auto-waiting y actionability](/web/auto-waiting/)).
+</BestPractice>
+
+## Caso QA real
+
+Registro completo de una cuenta Pro: combina todas las acciones de formulario y termina con una aserción sobre el mensaje de confirmación.
+
+<CodeExample id="acciones/qa-case" title="Registrar una cuenta">
+	<Fragment slot="what">Completa nombre y correo, elige país y plan, acepta los términos, envía el formulario y comprueba el mensaje «Cuenta Pro creada para Ana Pérez».</Fragment>
+	<Fragment slot="why">Cada control se localiza por su etiqueta o su rol y se opera con su acción específica. El clic en **Crear cuenta** espera solo a que el botón se habilite.</Fragment>
+	<Fragment slot="avoids">Evita esperas fijas antes del envío y evita pruebas que solo comprueban que se hizo clic sin verificar el resultado.</Fragment>
+	<Fragment slot="alternative">En un framework real, estos pasos vivirían en un Page Object `RegistroPage` con un método `registrar(datos)`.</Fragment>
+</CodeExample>
+
+## Errores comunes
+
+- **El botón no se habilita después de `fill`**: la aplicación escucha eventos de teclado o el campo pierde el foco recién al salir. Prueba `pressSequentially` o `press('Tab')`.
+- **`check` falla con «Clicking the checkbox did not change its state»**: el checkbox real está oculto y la casilla visible es otro elemento. Localiza por la etiqueta (`getByLabel`) para que el clic llegue al control correcto.
+- **`selectOption` no encuentra la opción**: el desplegable es un componente propio, no un `<select>`. Opéralo con clics.
+- **El arrastre no hace nada**: la aplicación usa una librería que necesita pasos intermedios del mouse. Usa `page.mouse` con varios `move`.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `Clear()` + `SendKeys(texto)` | `fill(texto)` | Una sola acción que reemplaza el valor y espera a que el campo sea editable. |
+| `SendKeys(Keys.Enter)` | `press('Enter')` | Equivalente directo. |
+| `Click()` en un checkbox | `check()` / `uncheck()` | Deja el estado pedido en lugar de invertirlo. |
+| `new SelectElement(e).SelectByText(...)` | `selectOption({ label })` | No necesita una clase auxiliar. |
+| `Actions.MoveToElement(e).Perform()` | `hover()` | Una llamada sobre el Locator. |
+| `Actions.DragAndDrop(origen, destino)` | `dragTo(destino)` | Una llamada sobre el Locator. |
+| `IJavaScriptExecutor` para fijar valores | Evitarlo | En ambos casos se saltan los eventos de la aplicación. |

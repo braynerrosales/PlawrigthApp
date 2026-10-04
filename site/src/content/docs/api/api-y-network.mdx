@@ -1,0 +1,170 @@
+---
+title: API y Network
+description: Probar una API REST con el cliente HTTP de Playwright, preparar datos por API antes de la UI, esperar respuestas de red y simular, modificar o bloquear peticiones con route.
+category: api
+level: intermediate
+order: 14
+readingTime: 20
+tags:
+  - API testing
+  - APIRequestContext
+  - request
+  - toBeOK
+  - ToBeOKAsync
+  - page.request
+  - waitForResponse
+  - RunAndWaitForResponseAsync
+  - route
+  - fulfill
+  - mock
+  - route.fetch
+  - route.abort
+  - glob
+  - "500"
+  - "400"
+prerequisites:
+  - Auto-waiting y actionability
+  - Assertions
+  - Navegación
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Casi toda aplicación web es una interfaz encima de una API. Playwright trae dos herramientas para trabajar con esa capa: un **cliente HTTP** para llamar a la API directamente (sin navegador) y el **control de la red del navegador**, que permite esperar, simular, modificar o bloquear las peticiones que hace la página. Usadas juntas, hacen las pruebas más rápidas y permiten probar situaciones difíciles de provocar a mano, como un error 500.
+
+## Qué aprenderás
+
+- Cómo probar una API con `request` (TypeScript y JavaScript), `IAPIRequestContext` (C#) o `APIRequestContext` (Java y Python) y comprobar el estado con `toBeOK`.
+- Cómo validar el camino negativo: una petición inválida que debe responder 400.
+- Cómo crear datos por API y verificarlos en la UI, sin recorrer formularios en cada prueba.
+- Cómo esperar una respuesta concreta de la red en lugar de dormir la prueba.
+- Cómo simular respuestas, errores y cambios en datos reales con `route`, y cómo bloquear recursos.
+
+### La página de práctica
+
+Los ejemplos usan una **API de pedidos** pequeña que se ejecuta como un servidor HTTP real en `http://127.0.0.1:4789`. Tiene `GET /api/pedidos`, `GET /api/pedidos/{id}`, `POST /api/pedidos` (valida cliente, producto y una cantidad entera mayor que 0; responde 201 o 400) y `DELETE /api/pedidos/{id}`. Trae tres pedidos de ejemplo; el primero es de **Ana Torres**.
+
+En la raíz (`/`) hay una página **Pedidos** que carga la lista con `fetch('/api/pedidos')` y la muestra en una tabla, con un mensaje de estado («3 pedidos», «No hay pedidos todavía.» o un aviso de error). También tiene una imagen de promoción y un formulario **Nuevo pedido** que envía un `POST` y muestra «Pedido #N creado».
+
+<Aside title="Por qué un servidor real">
+En otros módulos el sitio de práctica se sirve interceptando las peticiones del navegador con `route`. Aquí no sirve: las peticiones del cliente HTTP de Playwright las envía Playwright, no el navegador, y `page.route` no las ve. Al correr los snippets, el servidor lo arranca `webServer` en TypeScript y JavaScript, un `[SetUpFixture]` en C#, un fixture de sesión de pytest en Python y una clase de soporte en Java que lo inicia la primera vez que una prueba pide su URL.
+</Aside>
+
+## Probar la API directamente
+
+<CodeExample id="api-y-network/consultar-pedidos" title="Consultar un pedido">
+	<Fragment slot="what">Pide `GET /api/pedidos/1`, comprueba que la respuesta es exitosa y que el JSON trae el cliente y el producto esperados.</Fragment>
+	<Fragment slot="why">En TypeScript y JavaScript, el fixture `request` es un contexto de API aislado para cada prueba que usa el `baseURL` configurado, así que basta con la ruta. En C#, la prueba hereda de `PlaywrightTest`, crea el contexto con `Playwright.APIRequest.NewContextAsync` en `[SetUp]` y lo libera en `[TearDown]`. En Python, `pytest-playwright` no trae un fixture de API: el `conftest.py` define `api_request_context` con `playwright.request.new_context(base_url=...)` y lo libera con `dispose()` después del `yield`, como en la documentación oficial. En Java, la prueba crea el contexto con `playwright.request().newContext()` en `@BeforeEach` y lo libera con `dispose()` en `@AfterEach`; la respuesta no trae un lector de JSON, así que el cuerpo se lee con `text()` y se interpreta con Gson, como en la documentación de Java. `toBeOK` (`ToBeOKAsync`) comprueba que el estado está entre 200 y 299.</Fragment>
+	<Fragment slot="avoids">Evita probar reglas de la API a través de la UI, que es lento y mezcla dos causas de fallo, y evita añadir otra librería HTTP con su propia configuración.</Fragment>
+	<Fragment slot="alternative">En C#, `response.JsonAsync()` devuelve un `JsonElement?` que se recorre con `GetProperty`. Si prefieres clases tipadas, existe `JsonAsync<T>()`.</Fragment>
+</CodeExample>
+
+<CodeExample id="api-y-network/crear-y-eliminar" title="Crear, leer y eliminar un pedido">
+	<Fragment slot="what">Crea un pedido con `POST` y comprueba el 201, lo lee por su `id`, lo elimina (204) y verifica que ya no existe (404).</Fragment>
+	<Fragment slot="why">`data` (TypeScript y JavaScript) o `DataObject` (C#) serializa el objeto como JSON y pone la cabecera `Content-Type: application/json`. La prueba usa el `id` que devolvió la API en lugar de suponerlo, y borra lo que creó.</Fragment>
+	<Fragment slot="avoids">Evita pruebas que dependen de un `id` fijo o del orden de ejecución: con pruebas en paralelo contra la misma API, cada una debe trabajar con sus propios datos.</Fragment>
+	<Fragment slot="alternative">Para un código exacto (201, 204, 404) se compara `status()` (`Status` en C#); `toBeOK` solo dice que es 2xx.</Fragment>
+</CodeExample>
+
+<CodeExample id="api-y-network/validacion" title="Un pedido inválido responde 400">
+	<Fragment slot="what">Envía un pedido con cantidad 0, comprueba que la respuesta **no** es exitosa, que el estado es 400 y que el cuerpo explica el error.</Fragment>
+	<Fragment slot="why">Por defecto, un 4xx o 5xx no lanza una excepción: la respuesta llega a la prueba y se puede inspeccionar. `not.toBeOK()` (`Not.ToBeOKAsync()`) expresa la intención, y el estado y el mensaje concretos confirman que falló **por la razón correcta**.</Fragment>
+	<Fragment slot="avoids">Evita una suite que solo prueba el camino feliz y no detecta que la API empezó a aceptar datos inválidos.</Fragment>
+	<Fragment slot="alternative">Si quieres que cualquier estado fuera de 2xx lance una excepción, existe la opción `failOnStatusCode` (`FailOnStatusCode` en C#), por petición o para todo el contexto.</Fragment>
+</CodeExample>
+
+## Preparar datos por API y verificar en la UI
+
+<CodeExample id="api-y-network/api-y-ui" title="Un pedido creado por API aparece en la tabla">
+	<Fragment slot="what">Crea un pedido con un cliente único usando `page.request`, abre la página y comprueba que la fila de ese cliente muestra el producto.</Fragment>
+	<Fragment slot="why">Crear el dato por API tarda milisegundos; la UI solo se usa para lo que esta prueba quiere verificar: que la tabla muestra lo que hay en el servidor. `page.request` es el cliente HTTP del contexto de la página: usa su `baseURL` y **comparte sus cookies**, así que si la aplicación tuviera sesión, las peticiones irían autenticadas igual que el navegador.</Fragment>
+	<Fragment slot="avoids">Evita rellenar el mismo formulario en cada prueba solo para tener datos, y evita que un fallo en el formulario rompa pruebas que no tratan sobre él.</Fragment>
+	<Fragment slot="alternative">Si no quieres compartir cookies con el navegador, usa un contexto aislado: el fixture `request` en TypeScript y JavaScript, `Playwright.APIRequest.NewContextAsync` en C#, `playwright.request().newContext()` en Java o `playwright.request.new_context()` en Python.</Fragment>
+</CodeExample>
+
+## Esperar una respuesta de la red
+
+<CodeExample id="api-y-network/esperar-respuesta" title="Crear un pedido desde el formulario">
+	<Fragment slot="what">Rellena el formulario, hace clic en **Crear pedido**, espera la respuesta del `POST /api/pedidos`, comprueba el 201 y que el mensaje muestra el `id` que devolvió el servidor.</Fragment>
+	<Fragment slot="why">La espera tiene que empezar **antes** del clic: si la respuesta llega antes de empezar a esperarla, la espera no la ve. En TypeScript y JavaScript se guarda la promesa de `waitForResponse` y se espera después del clic; en C#, `RunAndWaitForResponseAsync` ejecuta la acción y espera en una sola llamada, igual que `waitForResponse(predicado, () -> ...)` en Java; en Python, el bloque `with page.expect_response(...)` empieza a esperar al entrar y entrega la respuesta en `.value` al salir. El predicado filtra por URL **y** método, porque la página también hace `GET` a la misma URL.</Fragment>
+	<Fragment slot="avoids">Evita esperas fijas y permite comprobar lo que la UI no muestra: el estado HTTP y el cuerpo de la respuesta.</Fragment>
+	<Fragment slot="alternative">Si solo importa lo que ve la persona, una aserción web-first sobre el mensaje basta; espera la respuesta cuando necesitas sus datos.</Fragment>
+</CodeExample>
+
+<BadPractice title="esperar un tiempo fijo en lugar de la respuesta" id="api-y-network/espera-fija">
+	La prueba duerme dos segundos y luego lee el mensaje una sola vez. Casi siempre esos dos segundos sobran (la API respondió en milisegundos) y el día que el servidor tarda más, la prueba falla sin que haya un error real. Además, no sabe qué respondió la API.
+</BadPractice>
+
+<BestPractice title="esperar la respuesta concreta" id="api-y-network/esperar-respuesta">
+	La prueba continúa en cuanto llega la respuesta, ni antes ni después, y puede comprobar su estado y su cuerpo.
+</BestPractice>
+
+## Simular respuestas con route
+
+`page.route(patrón, handler)` (`Page.RouteAsync` en C#) intercepta las peticiones de la página cuya URL coincide con el patrón. El handler decide qué hacer con cada una: responder con datos propios (`fulfill`), dejarla seguir (`continue`), pedirla al servidor y modificarla (`fetch` + `fulfill`) o cancelarla (`abort`).
+
+<CodeExample id="api-y-network/mock-respuesta" title="Mostrar pedidos simulados">
+	<Fragment slot="what">Responde `GET /api/pedidos` con dos pedidos inventados y comprueba que la página muestra «2 pedidos» y la fila del cliente simulado.</Fragment>
+	<Fragment slot="why">Con `json`, `fulfill` serializa el objeto y pone `Content-Type: application/json`. La ruta se registra **antes** de `goto`, porque la página pide los pedidos al cargar. La prueba controla exactamente qué datos ve la UI, sin depender de lo que haya en el servidor.</Fragment>
+	<Fragment slot="avoids">Evita pruebas de UI que fallan porque otra prueba cambió los datos del servidor, y permite probar casos raros (listas vacías, textos largos) sin crearlos en la base de datos.</Fragment>
+	<Fragment slot="alternative">Con `json: []` (un arreglo vacío en C#) se prueba el estado «No hay pedidos todavía.».</Fragment>
+</CodeExample>
+
+<CodeExample id="api-y-network/simular-error" title="La API responde 500">
+	<Fragment slot="what">Responde la lista de pedidos con un 500 y comprueba que la página muestra el aviso de error y oculta la tabla.</Fragment>
+	<Fragment slot="why">Provocar un error real del servidor en un ambiente compartido es difícil y afecta a otros. Con `fulfill({ status: 500 })` el error ocurre solo en esta prueba y solo para esta URL.</Fragment>
+	<Fragment slot="avoids">Evita dejar sin probar el manejo de errores, que es justo lo que la persona ve cuando algo sale mal en producción.</Fragment>
+</CodeExample>
+
+<CodeExample id="api-y-network/modificar-respuesta" title="Modificar la respuesta real">
+	<Fragment slot="what">Pide la lista real al servidor, cambia el estado de todos los pedidos a «enviado» y entrega esa respuesta modificada a la página.</Fragment>
+	<Fragment slot="why">`route.fetch()` (`FetchAsync`) hace la petición original y devuelve la respuesta sin entregarla todavía. `fulfill({ response, json })` reutiliza su estado y sus cabeceras y reemplaza el cuerpo. En C#, el ejemplo edita el JSON con `JsonNode` y lo entrega como `Body`.</Fragment>
+	<Fragment slot="avoids">Evita mantener un JSON simulado completo que se desactualiza cuando la API agrega campos: solo cambias lo que la prueba necesita.</Fragment>
+</CodeExample>
+
+<CodeExample id="api-y-network/bloquear-recursos" title="Cargar la página sin imágenes">
+	<Fragment slot="what">Cancela toda petición de imágenes, abre la página y comprueba que la app avisa «Imagen no disponible» y que los pedidos se cargan igual.</Fragment>
+	<Fragment slot="why">`route.abort()` (`AbortAsync`) hace que la petición falle como un error de red. El patrón `**/*.{png,jpg,jpeg,webp}` usa las llaves para listar varias extensiones.</Fragment>
+	<Fragment slot="avoids">Evita descargar recursos que la prueba no necesita (imágenes pesadas, analítica, anuncios) y permite comprobar que la página sigue funcionando si un recurso no carga.</Fragment>
+</CodeExample>
+
+<Aside type="caution" title="Simula con criterio">
+Una suite que simula **todas** las respuestas puede pasar aunque la API real esté rota: solo prueba la UI contra datos que tú inventaste. Combina las dos cosas: pruebas de API contra el servidor real (como las de la primera sección) y simulaciones en la UI para los casos difíciles de provocar.
+</Aside>
+
+### Patrones de URL (glob)
+
+- `*` coincide con cualquier carácter **excepto** `/`; `**` coincide con cualquier carácter, incluida `/`.
+- `{a,b}` coincide con cualquiera de las opciones separadas por comas.
+- `?` coincide solo con un signo de interrogación literal, no con «un carácter cualquiera».
+- El patrón se compara con la URL **completa**, incluidos los parámetros: `**/api/pedidos` coincide con `http://127.0.0.1:4789/api/pedidos`, pero no con `.../api/pedidos?pagina=2`.
+- Una ruta que empieza con `/` (por ejemplo `/api/pedidos`) solo funciona si hay `baseURL`: Playwright la combina con la dirección base. Sin `baseURL` no coincide con nada.
+
+## Errores comunes
+
+- **La simulación no tiene efecto**: la ruta se registró después de `goto`, cuando la página ya había pedido los datos. Registra `route` antes de la acción que dispara la petición.
+- **El patrón no coincide**: se escribió una ruta sin `**/` delante y sin `baseURL`, o el patrón no contempla parámetros (`**/api/pedidos` no coincide con `/api/pedidos?pagina=2`). Usa `**/api/pedidos*`, una expresión regular o un predicado.
+- **La petición queda colgada**: el handler no llama a `fulfill`, `continue`, `fallback` ni `abort` en algún camino, o falta un `await` dentro del handler. Toda petición interceptada debe resolverse.
+- **`waitForResponse` vence el timeout aunque la respuesta llegó**: la espera empezó después del clic. Crea la promesa antes de la acción (TypeScript y JavaScript), usa `RunAndWaitForResponseAsync` (C#), pasa la acción como segundo argumento de `waitForResponse` (Java) o pon la acción dentro de `with page.expect_response(...)` (Python).
+- **`page.route` no intercepta las llamadas de la API**: las peticiones de `request` / `page.request` las envía Playwright, no la página. `route` solo ve lo que pide el navegador.
+- **Pruebas que fallan solo en paralelo**: dependen de un `id` fijo o de la cantidad de registros. Cada prueba crea sus propios datos y busca por un valor único.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| Sin cliente HTTP propio: se usa `HttpClient`, RestSharp o REST Assured | `request` / `IAPIRequestContext` | Playwright incluye el cliente, con `baseURL`, aserción `toBeOK` y cookies compartidas con el navegador vía `page.request`. |
+| Interceptar red con CDP (solo Chromium) o WebDriver BiDi, según lenguaje y navegador | `page.route` / `context.route` | En Playwright es la misma API en Chromium, Firefox y WebKit. |
+| Esperar con `WebDriverWait` a que aparezca un elemento después de la llamada | `waitForResponse` / `RunAndWaitForResponseAsync` | Playwright espera la respuesta concreta y da acceso a su estado y cuerpo. |
+| Montar un servidor simulado (WireMock u otro) para provocar errores | `route.fulfill({ status: 500 })` | Playwright simula la respuesta solo para esa prueba, sin infraestructura adicional. |

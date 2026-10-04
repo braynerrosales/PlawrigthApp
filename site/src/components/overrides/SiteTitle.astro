@@ -1,0 +1,46 @@
+---
+/** Marca propia de la guía (sin logo de Playwright). */
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="site-title">
+	<span class="mark" aria-hidden="true"></span>
+	<span class="name" translate="no">{siteTitle}</span>
+	<small>para QA</small>
+</a>
+
+<style>
+	.site-title {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		min-width: 0;
+		color: var(--sl-color-white);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.mark {
+		flex: none;
+		width: 0.7rem;
+		height: 0.7rem;
+		border-radius: 2px;
+		background: var(--sl-color-accent);
+		transform: rotate(45deg);
+	}
+	.name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font: 800 1.15rem / 1 var(--pg-font-display);
+		font-stretch: 87.5%;
+	}
+	small {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-xs);
+		font-weight: 500;
+	}
+	@media (max-width: 30rem) {
+		small {
+			display: none;
+		}
+	}
+</style>

@@ -1,0 +1,142 @@
+---
+title: Auto-waiting y actionability
+description: Qué comprueba Playwright antes de cada acción, por qué las esperas fijas hacen pruebas lentas e inestables y cómo leer un error de timeout.
+category: web
+level: beginner
+order: 6
+readingTime: 15
+tags:
+  - auto-waiting
+  - actionability
+  - timeout
+  - waitForTimeout
+  - force
+  - flaky
+  - Timeout exceeded
+prerequisites:
+  - Locators
+  - Acciones e interacciones
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+La mayoría de las pruebas inestables (*flaky*) fallan por actuar antes de tiempo: el botón todavía está deshabilitado, un aviso lo tapa o los datos no llegaron. Playwright resuelve esto por diseño: **antes de cada acción comprueba que el elemento está listo** y, si no lo está, espera.
+
+## Qué aprenderás
+
+- Qué comprobaciones hace Playwright antes de cada acción (*actionability*).
+- Por qué una espera fija es más lenta y menos fiable que esperar una condición.
+- Cómo leer un error de timeout para saber qué faltó.
+- Por qué `force` no es una solución.
+
+### La página de práctica
+
+Una pantalla de pedidos que simula una aplicación lenta: al abrirla, un aviso «Cargando la aplicación…» tapa la página durante 600 ms; **Cargar pedidos** trae los datos con 800 ms de retraso y recién entonces habilita **Exportar**. El botón **Pagar** está deshabilitado siempre.
+
+## Qué comprueba Playwright antes de actuar
+
+| Comprobación | Significa que el elemento… |
+|---|---|
+| **Visible** | tiene tamaño y no tiene `visibility: hidden`. Un elemento con `display: none` o tamaño cero no es visible; uno con `opacity: 0` sí. |
+| **Stable** | mantuvo la misma posición y tamaño durante al menos dos cuadros de animación (no se está moviendo). |
+| **Receives events** | es el que realmente recibiría el clic en ese punto; no lo tapa otro elemento. |
+| **Enabled** | no tiene `disabled`, no está en un `fieldset` deshabilitado ni dentro de `aria-disabled="true"`. |
+| **Editable** | está habilitado y no es `readonly` ni `aria-readonly="true"`. |
+
+Cada acción aplica solo las comprobaciones que tienen sentido para ella:
+
+| Acción | Visible | Stable | Receives events | Enabled | Editable |
+|---|:-:|:-:|:-:|:-:|:-:|
+| `click`, `dblclick`, `check`, `uncheck`, `setChecked`, `tap` | ✓ | ✓ | ✓ | ✓ | |
+| `hover`, `dragTo` | ✓ | ✓ | ✓ | | |
+| `fill`, `clear` | ✓ | | | ✓ | ✓ |
+| `selectOption` | ✓ | | | ✓ | |
+| `press`, `pressSequentially`, `focus`, `setInputFiles` | | | | | |
+
+Además, el Locator tiene que encontrar exactamente un elemento (ver [Strictness](/web/locators/#strictness)). Si todas las comprobaciones se cumplen, la acción se ejecuta; si no, Playwright vuelve a intentarlo hasta que se cumplan o venza el timeout.
+
+<CodeExample id="auto-waiting/auto-wait" title="Sin una sola espera explícita">
+	<Fragment slot="what">Hace clic en **Cargar pedidos** mientras el aviso inicial todavía la tapa, luego en **Exportar** mientras sigue deshabilitado, y comprueba el mensaje final.</Fragment>
+	<Fragment slot="why">El primer clic espera a que el aviso desaparezca (*receives events*). El segundo espera a que el botón se habilite (*enabled*). La prueba describe solo lo que hace la persona.</Fragment>
+	<Fragment slot="avoids">Evita las dos causas típicas de pruebas inestables: hacer clic sobre algo que está tapado y hacer clic sobre un botón todavía deshabilitado.</Fragment>
+</CodeExample>
+
+<Aside title="Las aserciones también esperan">
+`expect(locator).toHaveText(...)` y el resto de aserciones web-first reintentan hasta que se cumplen. Por eso, después de una acción que dispara algo asíncrono, la forma correcta de esperar es **afirmar el resultado**. Se ve en detalle en [Assertions](/web/assertions/).
+</Aside>
+
+## Espera fija vs esperar una condición
+
+<BadPractice title="esperas fijas «por si acaso»" id="auto-waiting/sleep">
+	La prueba pasa, pero espera 3 segundos siempre, aunque la página esté lista en 1. Y el día que el servidor tarde 3,1 segundos, falla. Una espera fija es a la vez **demasiado larga** cuando todo va bien y **demasiado corta** cuando algo va lento. Multiplicado por cientos de pruebas, son minutos de CI perdidos.
+</BadPractice>
+
+<BestPractice title="esperar el resultado que te interesa" id="auto-waiting/esperar-condicion">
+	La aserción espera exactamente lo necesario: termina en cuanto aparecen los 3 pedidos y solo falla si no aparecen dentro del timeout.
+</BestPractice>
+
+## Cuando la espera no termina: el error de timeout
+
+Si una condición nunca se cumple, Playwright no espera para siempre. La acción falla cuando vence su timeout y el mensaje dice **qué estaba esperando y qué faltó**.
+
+<CodeExample id="auto-waiting/timeout" title="Una acción imposible termina en timeout">
+	<Fragment slot="what">Intenta hacer clic en **Pagar**, que nunca se habilita, con un timeout de 2 segundos.</Fragment>
+	<Fragment slot="why">El timeout corto es solo para el ejemplo. En Playwright Test (TypeScript y JavaScript), las acciones no tienen timeout propio por defecto y las limita el timeout de la prueba (30 segundos); en C#, Java y Python, el timeout por defecto de cada acción es de 30 segundos. Las aserciones esperan 5 segundos en todos los lenguajes.</Fragment>
+	<Fragment slot="avoids">Evita interpretar un timeout como «la página está lenta» sin leer el registro de llamadas (*call log*), que dice la causa exacta.</Fragment>
+</CodeExample>
+
+El error real que produce este ejemplo:
+
+```text
+locator.click: Timeout 2000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'Pagar' })
+    - locator resolved to <button disabled type="button" title="Agrega un medio de pago para continuar">Pagar</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not enabled
+    - retrying click action
+```
+
+Cómo leerlo:
+
+- **`locator resolved to <button disabled …>`**: el Locator sí encontró el botón. El problema no es el selector.
+- **`element is not enabled`**: la comprobación que nunca se cumplió. La pregunta correcta es «¿por qué sigue deshabilitado?» (faltan datos, falta un paso previo), no «¿cuánto más espero?».
+- Si en cambio ves solo **`waiting for getByRole(...)`** sin `locator resolved`, el Locator no encuentra nada: revisa el nombre accesible o si el elemento está en otra página o iframe.
+
+## force no es una solución
+
+<BadPractice title="forzar la acción para que «pase»" id="auto-waiting/force">
+	`force` desactiva las comprobaciones de actionability. La acción ya no falla, pero tampoco hace lo que una persona podría hacer: un clic sobre un botón deshabilitado no ejecuta nada, y uno sobre un elemento tapado lo recibe otro elemento. El error se mueve a un lugar más difícil de diagnosticar, o desaparece y la prueba pasa sin probar nada.
+</BadPractice>
+
+<Aside type="caution">
+Si sientes que necesitas `force` o una espera fija, casi siempre es una señal: falta un paso previo en la prueba, el Locator apunta al elemento equivocado o hay un problema real de usabilidad que la prueba está detectando.
+</Aside>
+
+## Errores comunes
+
+- **«Timeout … exceeded» con `element is not visible`**: el elemento existe pero está oculto; quizá hay que abrir antes un menú o una pestaña.
+- **«… intercepts pointer events»**: otro elemento (un aviso, un spinner, un banner de cookies) tapa el que quieres usar. Cierra o espera ese elemento; no uses `force`.
+- **`element is not stable`**: el elemento se está animando. Si la animación nunca termina, considera desactivar animaciones en el entorno de pruebas.
+- **La prueba pasa en local y falla en CI**: en CI todo va más lento. Si dependías de una espera fija, ahí aparece. Reemplázala por una aserción.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `Thread.Sleep(2000)` | Ninguna | Las acciones ya esperan; si hace falta esperar un resultado, se usa una aserción. |
+| `WebDriverWait` + `ExpectedConditions.ElementToBeClickable` | Implícito en `click` | Playwright además comprueba que nadie tape el elemento y que no se esté moviendo. |
+| Espera implícita (`ImplicitWait`) | No existe | Mezclar esperas implícitas y explícitas es una fuente conocida de esperas impredecibles en Selenium; Playwright no tiene ese concepto. |
+| `ElementClickInterceptedException` | Reintento automático hasta que el elemento recibe el clic | Si nunca lo recibe, el timeout explica qué lo tapa. |

@@ -1,0 +1,180 @@
+---
+title: Sesión y autenticación
+description: Iniciar sesión una vez y reutilizar el estado guardado (storageState), manejar cookies desde la prueba y probar varios roles a la vez sin repetir el login en cada prueba.
+category: api
+level: intermediate
+order: 13
+readingTime: 18
+tags:
+  - autenticación
+  - login
+  - sesión
+  - storageState
+  - StorageStatePath
+  - setStorageState
+  - cookies
+  - addCookies
+  - clearCookies
+  - HttpOnly
+  - localStorage
+  - sessionStorage
+  - IndexedDB
+  - proyecto setup
+  - dependencies
+  - roles
+  - .gitignore
+  - Error reading storage state
+prerequisites:
+  - Browser, Context y Page
+  - Navegación
+  - Formularios
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Casi todo lo interesante de una aplicación está detrás de un inicio de sesión. Si cada prueba completa el formulario de login antes de empezar, la suite se vuelve lenta y todas las pruebas fallan juntas el día que cambia ese formulario. Playwright resuelve esto con el **estado de almacenamiento** (`storageState`): se inicia sesión una vez, se guarda lo que el navegador recuerda de esa sesión y cada prueba arranca ya autenticada.
+
+## Qué aprenderás
+
+- Qué guarda `storageState` (cookies y `localStorage`) y qué no (`sessionStorage`; IndexedDB solo si se pide).
+- Cómo iniciar sesión por la interfaz una vez y guardar el estado en un archivo.
+- Cómo reutilizar ese estado en cada prueba, en TypeScript, JavaScript, C#, Java y Python, y cuál es el patrón recomendado en Playwright Test.
+- Cómo agregar, leer y borrar cookies desde la prueba.
+- Cómo probar dos roles (administrador y cliente) en una misma prueba.
+- Por qué el archivo de estado es un secreto y no se sube al repositorio.
+
+### La página de práctica
+
+Los ejemplos usan **Portal QA**, un sitio pequeño con un formulario de inicio de sesión y un panel privado:
+
+- `/login`: al enviar usuario y contraseña, la página llama a `/api/login`. Si las credenciales son correctas, el servidor responde con la cookie `sesion` (marcada `HttpOnly`, `Secure` y `SameSite=Lax`); la página guarda el último usuario en `localStorage` y lleva al panel.
+- `/panel`: saluda al usuario («Hola, Ana») y muestra su rol. Solo el rol **admin** ve la sección **Administración**. Sin una cookie de sesión válida, la página manda a `/login`.
+
+Hay dos cuentas de prueba, obviamente ficticias: `ana` (cliente) y `admin`, ambas con la clave `clave-de-prueba`. Como en el módulo de [Navegación](/web/navegacion/), el sitio se sirve en `https://portal.test` sin salir a la red: la prueba responde cada petición con `route`, incluida la cookie de sesión, que se envía en la cabecera `Set-Cookie` de la respuesta simulada.
+
+## Qué es el estado de almacenamiento
+
+Después de iniciar sesión, el navegador «recuerda» al usuario porque guardó algo: casi siempre una cookie de sesión y, a veces, un token en `localStorage`. Todo eso pertenece al **contexto** ([Browser, Context y Page](/fundamentos/browser-context-page/)), no a la página. `context.storageState()` (`Context.StorageStateAsync()` en C#) toma una foto de ese estado:
+
+- **Cookies** de todos los dominios, con sus atributos (`httpOnly`, `secure`, `sameSite`, vencimiento).
+- **`localStorage`** de cada origen visitado.
+- **IndexedDB**, solo si se pide con la opción `indexedDB: true` (`IndexedDB = true` en C#), disponible desde Playwright 1.51. Es necesaria cuando la aplicación guarda el token ahí, como Firebase Authentication.
+
+`sessionStorage` **no** se guarda: la documentación oficial lo describe como propio de cada dominio y no persistente entre cargas de página, y Playwright no ofrece una API para guardarlo. Si la aplicación guarda la sesión en `sessionStorage`, hay que restaurarlo a mano con un script de inicio (`addInitScript`).
+
+Un contexto nuevo creado con ese estado arranca con las mismas cookies y el mismo `localStorage`: para la aplicación, es el mismo usuario que ya inició sesión.
+
+## Iniciar sesión una vez y guardar el estado
+
+<CodeExample id="sesion-y-autenticacion/login-y-guardar-estado" title="Login por la interfaz y storageState">
+	<Fragment slot="what">Inicia sesión como `ana` por el formulario, espera el saludo del panel y guarda el estado del contexto en un archivo. Luego comprueba que el estado contiene la cookie `sesion` y la entrada `ultimoUsuario` de `localStorage`.</Fragment>
+	<Fragment slot="why">El login pasa por la interfaz real una sola vez, así que también prueba ese flujo. La espera del saludo asegura que la cookie ya llegó antes de guardar: si se guarda demasiado pronto, el archivo queda sin sesión. Con `path`, el estado se escribe en el archivo; además, el método lo devuelve (un objeto en TypeScript y JavaScript, un texto JSON en C#).</Fragment>
+	<Fragment slot="avoids">Evita repetir el formulario de login en cada prueba y evita guardar un estado incompleto por no esperar a que termine el inicio de sesión.</Fragment>
+	<Fragment slot="alternative">Si la aplicación tiene una API de login, se puede iniciar sesión con una petición HTTP (`APIRequestContext`) y guardar su `storageState`, sin abrir el navegador. Se ve en el módulo [API y Network](/api/api-y-network/).</Fragment>
+</CodeExample>
+
+El archivo se escribe con `test.info().outputPath()` en TypeScript y JavaScript, en la carpeta temporal del sistema en C# y Java, y en `tmp_path` de pytest en Python: **nunca dentro del repositorio**, porque contiene la sesión.
+
+<Aside type="danger" title="El archivo de estado es un secreto">
+El archivo guarda cookies y tokens válidos: con él, cualquiera puede actuar como ese usuario mientras la sesión no venza. La documentación oficial recomienda guardarlo en una carpeta como `playwright/.auth` y agregarla al `.gitignore`. No lo subas al repositorio, no lo adjuntes a un ticket y no uses cuentas reales con permisos de producción para generarlo.
+</Aside>
+
+## Reutilizar el estado en cada prueba
+
+<CodeExample id="sesion-y-autenticacion/reutilizar-estado" title="Las pruebas arrancan con la sesión iniciada">
+	<Fragment slot="what">Carga el estado guardado de `ana` en el contexto de cada prueba y abre `/panel` directamente: la primera prueba comprueba el saludo y la segunda que el cliente no ve la sección **Administración**.</Fragment>
+	<Fragment slot="why">En TypeScript y JavaScript, `test.use({ storageState })` es una opción del contexto: Playwright Test crea el contexto de cada prueba con esas cookies y ese `localStorage`. En C#, la clase sobrescribe `ContextOptions()` con `StorageStatePath`, y `PageTest` crea el contexto de cada prueba con esas opciones. En Java, la clase sobrescribe `contextOptions()` de su clase base con `setStorageStatePath`. En Python, el fixture `browser_context_args` de `pytest-playwright` recibe `storage_state`. El login real ocurre una sola vez, antes de las pruebas (en `beforeAll`, `[OneTimeSetUp]`, `@BeforeAll` y un fixture con `scope="module"` en este ejemplo).</Fragment>
+	<Fragment slot="avoids">Evita pagar el costo del login en cada prueba y evita que una prueba sobre el panel falle por un cambio en el formulario de login, que no es lo que esa prueba quiere comprobar.</Fragment>
+	<Fragment slot="alternative">`storageState` también acepta el objeto que devolvió `context.storageState()` en vez de una ruta (`StorageState` con el texto JSON en C#). Para cambiar el estado de un contexto que ya existe, Playwright 1.59 agregó `context.setStorageState()`, que acepta una ruta o un objeto (`Context.SetStorageStateAsync(ruta)` en C#, solo con ruta): borra el estado actual y aplica el nuevo.</Fragment>
+</CodeExample>
+
+### El patrón recomendado en Playwright Test: un proyecto `setup`
+
+El ejemplo hace el login en un `beforeAll` para que el archivo sea autocontenido. En un proyecto real, la [documentación oficial](https://playwright.dev/docs/auth) recomienda un **proyecto de configuración** (`setup`): un archivo `auth.setup.ts` inicia sesión y guarda el estado en `playwright/.auth/user.json`, y los proyectos de pruebas declaran que dependen de él (`dependencies`) y usan ese archivo como `storageState`. Así el login se ejecuta una vez por ejecución de la suite, antes que cualquier prueba, y, como es una prueba más, aparece en el reporte con su propio resultado. La configuración tiene esta forma (adaptada de la documentación oficial; no es un snippet ejecutado por esta guía):
+
+```ts
+// playwright.config.ts
+export default defineConfig({
+	projects: [
+		{ name: 'setup', testMatch: /.*\.setup\.ts/ },
+		{
+			name: 'chromium',
+			use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/user.json' },
+			dependencies: ['setup'],
+		},
+	],
+});
+```
+
+En C# no hay proyectos ni dependencias de Playwright Test: el equivalente es iniciar sesión una vez en un `[OneTimeSetUp]` (por clase, como en el ejemplo) o en un `[SetUpFixture]` de NUnit (una vez para todo un namespace) y apuntar `StorageStatePath` al archivo guardado. En Java, igual con un `@BeforeAll` de JUnit y `setStorageStatePath`. En Python, lo mismo con un fixture de pytest con `scope="module"` o `scope="session"` que guarda el estado, y `browser_context_args` que lo carga.
+
+## Login en cada prueba vs estado reutilizado
+
+<BadPractice title="iniciar sesión por la interfaz en cada prueba" id="sesion-y-autenticacion/login-en-cada-prueba">
+	Cada prueba paga el formulario completo antes de empezar: con cientos de pruebas son minutos de más en cada ejecución. Además, todas dependen del login: si cambia una etiqueta del formulario o el servicio de autenticación está lento, fallan todas a la vez y el reporte no dice qué funcionalidad está rota de verdad.
+</BadPractice>
+
+<BestPractice title="iniciar sesión una vez y reutilizar el estado" id="sesion-y-autenticacion/reutilizar-estado">
+	El formulario de login se prueba una vez (en el setup y en sus propias pruebas) y el resto de la suite arranca autenticada. Las pruebas son más rápidas y, si el login se rompe, falla el setup con un mensaje claro en lugar de toda la suite.
+</BestPractice>
+
+Reutilizar el estado no significa dejar el login sin probar: el formulario, los mensajes de error y el cierre de sesión merecen sus propias pruebas. Lo que se evita es repetirlo como paso previo de pruebas que no tratan sobre el login.
+
+## Cookies desde la prueba
+
+A veces no hace falta un login completo: basta con poner la cookie de sesión en el contexto, o quitarla para comprobar qué pasa cuando la sesión desaparece.
+
+<CodeExample id="sesion-y-autenticacion/cookies" title="Agregar y borrar la cookie de sesión">
+	<Fragment slot="what">Agrega al contexto la cookie `sesion` con el token ficticio de `ana`, abre el panel y ve el saludo. Después borra esa cookie, comprueba que el contexto ya no tiene cookies para el portal y que al volver a `/panel` la aplicación manda al login.</Fragment>
+	<Fragment slot="why">`addCookies` (`AddCookiesAsync`) necesita, por cada cookie, `url` o el par `domain` y `path`. `clearCookies` (`ClearCookiesAsync`) acepta filtros por `name`, `domain` y `path` desde Playwright 1.43; sin filtros borra todas. `cookies(url)` (`CookiesAsync(url)`) devuelve solo las cookies que se enviarían a esa URL.</Fragment>
+	<Fragment slot="avoids">Evita depender del formulario para preparar una sesión y permite probar de forma directa el caso «sesión vencida o borrada», que por la interfaz es difícil de provocar.</Fragment>
+	<Fragment slot="alternative">En un proyecto real, el token no se escribe a mano: se obtiene de una API de login o de un estado guardado. Un token copiado del navegador vence y, si es de una cuenta real, es un secreto.</Fragment>
+</CodeExample>
+
+<CodeExample id="sesion-y-autenticacion/leer-cookies" title="Comprobar los atributos de la cookie de sesión">
+	<Fragment slot="what">Inicia sesión por la interfaz, lee las cookies del contexto y comprueba que la cookie `sesion` es `HttpOnly`, `Secure` y `SameSite=Lax`. Luego comprueba que el JavaScript de la página no la ve en `document.cookie`.</Fragment>
+	<Fragment slot="why">`cookies()` lee las cookies desde el navegador, no desde la página, así que incluye las `HttpOnly`, que el JavaScript de la página no puede leer. Eso permite comprobar atributos de seguridad que la interfaz no muestra.</Fragment>
+	<Fragment slot="avoids">Evita intentar leer la cookie de sesión con `page.evaluate(() => document.cookie)`, que nunca la encuentra si está bien protegida, y evita dar por buena una cookie de sesión sin `HttpOnly` o sin `Secure`.</Fragment>
+</CodeExample>
+
+## Varios roles en una misma prueba
+
+Algunos flujos necesitan dos usuarios a la vez: un administrador aprueba lo que un cliente pidió, o se comprueba que un cliente **no** ve lo que ve el administrador. El módulo [Browser, Context y Page](/fundamentos/browser-context-page/#sesiones-independientes-admin-y-cliente) mostró que dos contextos son dos sesiones aisladas; aquí cada contexto arranca con el estado guardado de un rol distinto.
+
+<CodeExample id="sesion-y-autenticacion/dos-roles" title="Admin y cliente con su propio estado">
+	<Fragment slot="what">Antes de la prueba, guarda el estado de `admin` y el de `ana`. En la prueba crea un contexto con cada estado, abre el panel en ambos y comprueba que el administrador ve **Administración** y el cliente no.</Fragment>
+	<Fragment slot="why">`storageState` (`StorageStatePath` en C#, `setStorageStatePath` en Java, `storage_state` en Python) es una opción de `browser.newContext()`, igual que `baseURL`. Cada contexto carga su archivo y queda autenticado como un usuario distinto, sin compartir cookies con el otro.</Fragment>
+	<Fragment slot="avoids">Evita cerrar sesión e iniciar otra en la misma página para cambiar de usuario, que es lento y deja restos de la sesión anterior, y evita lanzar un navegador por usuario.</Fragment>
+	<Fragment slot="alternative">Con varios roles en toda la suite, el proyecto `setup` guarda un archivo por rol (`admin.json`, `cliente.json`) y cada archivo de pruebas elige el suyo con `test.use({ storageState })` o, en C#, con su propia clase base que sobrescribe `ContextOptions()` (`contextOptions()` en Java). En Python, cada archivo sobrescribe `browser_context_args`.</Fragment>
+</CodeExample>
+
+## Errores comunes
+
+- **`Error reading storage state from ...: ENOENT`**: el archivo de estado no existe cuando se crea el contexto. En Playwright Test suele faltar `dependencies: ['setup']` en el proyecto, o el setup falló. En C#, el `[OneTimeSetUp]` que lo genera no se ejecutó o escribió en otra ruta (las rutas relativas se resuelven desde el directorio de trabajo, que con `dotnet test` suele ser `bin/...`).
+- **El estado se guardó sin sesión**: se llamó a `storageState()` justo después del clic en **Ingresar**, antes de que llegara la cookie. Espera la URL o un elemento de la página autenticada antes de guardar.
+- **Con el estado cargado, la aplicación vuelve a pedir login**: la sesión venció en el servidor (el archivo es una foto, no renueva el token), la aplicación guarda la sesión en `sessionStorage` (no se guarda) o en IndexedDB sin la opción `indexedDB: true`.
+- **Un `browser.newContext()` dentro de la prueba arranca con la sesión de `test.use`**: en Playwright Test, los contextos creados con `browser.newContext()` heredan las opciones de `use`, incluido `storageState`. Si necesitas un contexto sin sesión, pasa un estado vacío: `storageState: { cookies: [], origins: [] }`.
+- **`addCookies` falla al agregar una cookie**: falta `url` o el par `domain` y `path`.
+- **El archivo `.auth/*.json` apareció en un commit**: agrega la carpeta al `.gitignore`, borra el archivo del repositorio e invalida esas sesiones (cierra sesión o cambia la clave de la cuenta de prueba): quedó en el historial.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `driver.Manage().Cookies.AddCookie(cookie)` | `context.addCookies([...])` | En Selenium hay que estar en una página del dominio para agregarla; Playwright la agrega al contexto con `url` o `domain`, antes de abrir ninguna página. |
+| `driver.Manage().Cookies.AllCookies` / `GetCookieNamed(name)` | `context.cookies(urls?)` | Ambos ven cookies `HttpOnly`; Playwright lee las de todos los dominios del contexto, no solo las de la página actual. |
+| `DeleteAllCookies()` / `DeleteCookieNamed(name)` | `context.clearCookies({ name, domain, path })` | Mismo resultado; Playwright filtra también por dominio y ruta. |
+| Sin equivalente directo: guardar las cookies a mano y volver a agregarlas | `storageState({ path })` y la opción `storageState` | Guarda y restaura cookies y `localStorage` en un solo paso. |
+| Reutilizar un perfil del navegador (`--user-data-dir` en `ChromeOptions`) | `storageState` en un contexto nuevo | El perfil arrastra todo lo que dejaron las pruebas anteriores; un contexto con `storageState` empieza limpio, con solo la sesión. Playwright también puede abrir un perfil en disco (`launchPersistentContext`), pero la guía oficial de autenticación usa `storageState`. |
+| Dos usuarios a la vez: dos drivers (dos navegadores) | Dos contextos, cada uno con su `storageState` | Un solo navegador y sesiones aisladas. |

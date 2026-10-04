@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Mi cuenta · Tienda QA</title>
+	</head>
+	<body>
+		<nav aria-label="Principal">
+			<a href="/">Inicio</a>
+			<a href="/productos">Productos</a>
+			<a href="/login">Iniciar sesión</a>
+		</nav>
+		<main>
+			<h1>Mi cuenta</h1>
+			<nav aria-label="Cuenta">
+				<a href="/cuenta">Perfil</a>
+				<a href="/cuenta/pedidos">Pedidos</a>
+			</nav>
+			<h2 id="seccion"></h2>
+		</main>
+		<script>
+			// Aplicación de una sola página (SPA): cambia la URL con history.pushState, sin recargar.
+			const secciones = { '/cuenta': 'Perfil', '/cuenta/pedidos': 'Pedidos' };
+			const render = () => (document.getElementById('seccion').textContent = secciones[location.pathname]);
+			document.querySelector('nav[aria-label="Cuenta"]').addEventListener('click', (event) => {
+				if (event.target.tagName !== 'A') return;
+				event.preventDefault();
+				history.pushState(null, '', event.target.getAttribute('href'));
+				render();
+			});
+			addEventListener('popstate', render);
+			render();
+		</script>
+	</body>
+</html>

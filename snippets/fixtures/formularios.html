@@ -1,0 +1,82 @@
+<!doctype html>
+<!--
+  Página de práctica del módulo Formularios. El formulario valida con reglas propias de la
+  app (no con la validación nativa del navegador), tiene un campo de fecha, un campo de solo
+  lectura, uno deshabilitado que se habilita con una casilla, y se vacía tras un envío correcto.
+-->
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Solicitud de envío</title>
+		<style>
+			[role='alert'] { color: #b00020; margin: 0; }
+		</style>
+	</head>
+	<body>
+		<h1>Solicitud de envío</h1>
+		<!-- novalidate: la app muestra sus propios mensajes en lugar de los del navegador. -->
+		<form id="solicitud" novalidate>
+			<label for="pedido">Número de pedido</label>
+			<input id="pedido" value="PED-1042" readonly />
+
+			<label for="correo">Correo electrónico</label>
+			<input id="correo" type="email" aria-describedby="correo-error" />
+			<p id="correo-error" role="alert" hidden></p>
+
+			<label for="fecha">Fecha de entrega</label>
+			<input id="fecha" type="date" aria-describedby="fecha-error" />
+			<p id="fecha-error" role="alert" hidden></p>
+			<p id="fecha-resumen"></p>
+
+			<label><input type="checkbox" id="tiene-codigo" /> Tengo un cupón</label>
+			<label for="codigo">Código de descuento</label>
+			<input id="codigo" disabled />
+
+			<button type="submit">Enviar solicitud</button>
+		</form>
+		<p role="status"></p>
+
+		<script>
+			const form = document.getElementById('solicitud');
+			const field = (id) => document.getElementById(id);
+
+			const showError = (input, message) => {
+				const error = field(`${input.id}-error`);
+				error.textContent = message;
+				error.hidden = !message;
+				if (message) input.setAttribute('aria-invalid', 'true');
+				else input.removeAttribute('aria-invalid');
+			};
+
+			const syncCodigo = () => {
+				field('codigo').disabled = !field('tiene-codigo').checked;
+			};
+			field('tiene-codigo').addEventListener('change', syncCodigo);
+
+			form.addEventListener('submit', (event) => {
+				event.preventDefault();
+				const correo = field('correo');
+				const fecha = field('fecha');
+				const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.value);
+				showError(correo, correoValido ? '' : 'Ingresa un correo válido');
+				showError(fecha, fecha.value ? '' : 'Elige una fecha de entrega');
+				const status = document.querySelector('[role="status"]');
+				if (correoValido && fecha.value) {
+					status.textContent = `Solicitud ${field('pedido').value} enviada`;
+					// Tras un envío correcto la app deja el formulario listo para otra solicitud.
+					form.reset();
+					field('fecha-resumen').textContent = '';
+					syncCodigo();
+				} else {
+					status.textContent = '';
+				}
+			});
+
+			// El valor de un input date siempre es yyyy-mm-dd; la app lo muestra como dd/mm/yyyy.
+			field('fecha').addEventListener('change', (event) => {
+				const [year, month, day] = event.target.value.split('-');
+				field('fecha-resumen').textContent = event.target.value ? `Entrega: ${day}/${month}/${year}` : '';
+			});
+		</script>
+	</body>
+</html>

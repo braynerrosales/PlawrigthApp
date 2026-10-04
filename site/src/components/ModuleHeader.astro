@@ -1,0 +1,191 @@
+---
+/**
+ * Cabecera de un módulo: descripción, nivel, lectura, revisión, prerrequisitos, cobertura por
+ * lenguaje, evidencia de validación (ejemplos ejecutados, versión y runners), progreso y tags.
+ */
+import Progress from './Progress.astro';
+import { LEVELS } from '../lib/categories';
+import { COVERAGE, COVERAGE_GLYPH, LANGUAGES } from '../lib/languages';
+import type { ModuleMeta } from '../lib/modules';
+
+interface Props {
+	module: ModuleMeta;
+	/** Id de la entrada (`web/locators`), clave del progreso. */
+	id: string;
+	/** Cuerpo MDX, para contar los ejemplos publicados. */
+	body?: string;
+}
+
+const { module, id, body = '' } = Astro.props;
+const reviewed = module.lastReviewed.toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+// Cada `id="modulo/ejemplo"` de CodeExample, BestPractice o BadPractice es un snippet que se ejecuta.
+const examples = new Set([...body.matchAll(/\bid="([\w-]+\/[\w-]+)"/g)].map((m) => m[1])).size;
+const runners = [
+	...new Set(LANGUAGES.filter((l) => ['complete', 'partial'].includes(module.languages[l.id])).map((l) => l.runner)),
+];
+---
+
+<div class="module-header">
+	<p class="module-header__description">{module.description}</p>
+	<dl class="module-header__meta">
+		<div><dt>Nivel</dt><dd>{LEVELS[module.level]}</dd></div>
+		<div><dt>Lectura</dt><dd>{module.readingTime} min</dd></div>
+		<div><dt>Revisado</dt><dd><time datetime={module.lastReviewed.toISOString().slice(0, 10)}>{reviewed}</time></dd></div>
+		{
+			module.prerequisites.length > 0 && (
+				<div class="module-header__prereq"><dt>Requiere</dt><dd>{module.prerequisites.join(' · ')}</dd></div>
+			)
+		}
+	</dl>
+	<ul class="module-header__langs" aria-label="Cobertura por lenguaje">
+		{
+			LANGUAGES.map((lang) => (
+				<li data-coverage={module.languages[lang.id]}>
+					<span class="glyph" aria-hidden="true">{COVERAGE_GLYPH[module.languages[lang.id]]}</span>
+					{lang.label}
+					<span class="status">{COVERAGE[module.languages[lang.id]]}</span>
+				</li>
+			))
+		}
+	</ul>
+	<div class="module-header__validated">
+		<p>
+			{examples > 0 && <span class="ok"><span aria-hidden="true">✓</span> {examples} ejemplos ejecutados</span>}
+			<span class="mono">Playwright {module.validatedWith} · {runners.join(' · ')}</span>
+		</p>
+		<Progress module={id} />
+	</div>
+	<p class="module-header__tags"><span class="sr-only">Tags:</span>{module.tags.map((tag) => <code>{tag}</code>)}</p>
+</div>
+
+<style>
+	.module-header {
+		margin-top: 0.75rem;
+		font-size: var(--sl-text-sm);
+	}
+	.module-header__description {
+		margin: 0 0 1rem;
+		max-width: 40rem;
+		font-size: var(--sl-text-lg);
+		line-height: 1.55;
+		color: var(--sl-color-gray-3);
+	}
+	.module-header__meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem 1.25rem;
+		margin: 0;
+		color: var(--sl-color-gray-3);
+	}
+	.module-header__meta div {
+		display: flex;
+		gap: 0.35rem;
+	}
+	dd {
+		margin: 0;
+		color: var(--sl-color-white);
+		font-weight: 600;
+	}
+	.module-header__langs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		margin: 0.85rem 0 0;
+		padding: 0;
+		list-style: none;
+	}
+	.module-header__langs li {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		margin: 0;
+		padding: 0.1rem 0.5rem;
+		border: 1px solid var(--pg-border);
+		border-radius: var(--pg-r-sm);
+		background: var(--pg-surface);
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-white);
+	}
+	.glyph {
+		font-family: var(--__sl-font-mono);
+		color: var(--sl-color-gray-3);
+	}
+	.status {
+		color: var(--sl-color-gray-3);
+	}
+	/* Completo no repite la palabra: el ✓ y el color ya lo dicen, y el lector de pantalla lee el texto. */
+	[data-coverage='complete'] .status {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-coverage='complete'] .glyph {
+		color: var(--pg-ok);
+	}
+	[data-coverage='partial'] .glyph,
+	[data-coverage='partial'] .status {
+		color: var(--pg-warn);
+	}
+	[data-coverage='pending'],
+	[data-coverage='not-applicable'] {
+		border-style: dashed;
+		background: transparent;
+	}
+	.module-header__validated {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem 1rem;
+		margin-top: 1rem;
+		padding: 0.6rem 0.6rem 0.6rem 0.9rem;
+		border: 1px solid var(--pg-border);
+		border-radius: var(--pg-r-md);
+		background: var(--pg-surface);
+	}
+	.module-header__validated p {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 0.9rem;
+		margin: 0;
+		font-size: var(--sl-text-xs);
+	}
+	.module-header__validated .ok {
+		color: var(--pg-ok);
+		font-weight: 600;
+	}
+	.module-header__validated .mono {
+		font-family: var(--__sl-font-mono);
+		color: var(--sl-color-gray-3);
+	}
+	.module-header__validated :global(.guide-progress) {
+		margin-left: auto;
+	}
+	.module-header__tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		margin: 0.85rem 0 0;
+	}
+	.module-header__tags code {
+		padding: 0.05rem 0.4rem;
+		border-radius: var(--pg-r-sm);
+		background: transparent;
+		border: 1px solid var(--pg-border);
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-2xs);
+	}
+	/* Móvil: nivel, tiempo y revisión; los lenguajes se ven en las tabs del primer ejemplo. */
+	@media (max-width: 49.99rem) {
+		.module-header__meta .module-header__prereq,
+		.module-header__langs,
+		.module-header__tags {
+			display: none;
+		}
+		.module-header__validated :global(.guide-progress) {
+			flex-basis: 100%;
+			margin-left: 0;
+		}
+	}
+</style>

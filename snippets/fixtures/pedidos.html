@@ -1,0 +1,43 @@
+<!doctype html>
+<!--
+  Página de práctica de los módulos Auto-waiting y Assertions. Simula una app lenta:
+  un aviso que tapa la página al cargar, datos que llegan con retraso y un botón que
+  se habilita cuando terminan. Los tiempos son cortos pero reales.
+-->
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Pedidos QA</title>
+		<style>
+			.overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.5); color: white; display: grid; place-items: center; }
+		</style>
+	</head>
+	<body>
+		<h1>Pedidos</h1>
+		<div class="overlay">Cargando la aplicación…</div>
+		<button type="button">Cargar pedidos</button>
+		<button type="button" disabled>Exportar</button>
+		<button type="button" disabled title="Agrega un medio de pago para continuar">Pagar</button>
+		<p role="status"></p>
+		<ul aria-label="Pedidos"></ul>
+		<script>
+			const status = document.querySelector('[role="status"]');
+			const [load, exportButton, pay] = document.querySelectorAll('button');
+
+			// El aviso inicial tapa los botones durante 600 ms.
+			setTimeout(() => document.querySelector('.overlay').remove(), 600);
+
+			load.addEventListener('click', () => {
+				status.textContent = 'Cargando…';
+				setTimeout(() => {
+					document.querySelector('[aria-label="Pedidos"]').innerHTML =
+						'<li>PED-1001 · Pagado</li><li>PED-1002 · Pendiente</li><li>PED-1003 · Enviado</li>';
+					status.textContent = '3 pedidos';
+					exportButton.disabled = false;
+				}, 800);
+			});
+			exportButton.addEventListener('click', () => (status.textContent = 'Exportación lista'));
+			pay.addEventListener('click', () => (status.textContent = 'Pago realizado'));
+		</script>
+	</body>
+</html>

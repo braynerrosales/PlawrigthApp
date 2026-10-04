@@ -1,0 +1,3 @@
+Factura 0001
+Cliente: Ana Pérez
+Total: 120.00

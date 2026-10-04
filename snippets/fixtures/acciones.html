@@ -1,0 +1,122 @@
+<!doctype html>
+<!--
+  Página de práctica del módulo Acciones e interacciones. Cada control reacciona a los
+  mismos eventos que una app real (input, change, keyup, dblclick, drag & drop), para que
+  los ejemplos muestren qué acciones de Playwright los disparan y cuáles no.
+-->
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Registro QA</title>
+		<style>
+			[role='tooltip'] { padding: 4px; border: 1px solid; }
+			ul[aria-label] { min-height: 40px; border: 1px dashed; padding: 8px; }
+		</style>
+	</head>
+	<body>
+		<h1>Crear cuenta</h1>
+		<form id="registro">
+			<label for="nombre">Nombre</label>
+			<input id="nombre" />
+			<label for="correo">Correo electrónico</label>
+			<input id="correo" type="email" />
+			<label for="pais">País</label>
+			<select id="pais">
+				<option value="">Elige un país</option>
+				<option value="ar">Argentina</option>
+				<option value="cl">Chile</option>
+				<option value="co">Colombia</option>
+				<option value="mx">México</option>
+				<option value="pe">Perú</option>
+			</select>
+			<fieldset>
+				<legend>Plan</legend>
+				<label><input type="radio" name="plan" value="Gratis" checked /> Gratis</label>
+				<label><input type="radio" name="plan" value="Pro" /> Pro</label>
+			</fieldset>
+			<label><input type="checkbox" id="terminos" /> Acepto los términos</label>
+			<label><input type="checkbox" id="novedades" checked /> Recibir novedades</label>
+			<button type="submit" disabled>Crear cuenta</button>
+		</form>
+		<p role="status"></p>
+
+		<section>
+			<h2>Ayuda</h2>
+			<input type="search" aria-label="Buscar en la ayuda" />
+			<p id="resultados"></p>
+			<button type="button" aria-describedby="tip">Más información</button>
+			<span role="tooltip" id="tip" hidden>Respondemos en menos de 24 horas</span>
+			<label for="ciudad">Ciudad</label>
+			<input id="ciudad" autocomplete="off" />
+			<ul role="listbox" aria-label="Sugerencias"></ul>
+		</section>
+
+		<section>
+			<h2>Tareas</h2>
+			<p><span id="nombre-lista">Mi lista</span></p>
+			<ul aria-label="Pendiente">
+				<li draggable="true">Revisar reporte</li>
+			</ul>
+			<ul aria-label="Hecho"></ul>
+		</section>
+
+		<script>
+			const form = document.getElementById('registro');
+			const submit = form.querySelector('button[type="submit"]');
+			const field = (id) => document.getElementById(id);
+
+			// Como en React o Angular: el estado se actualiza con los eventos input/change,
+			// no leyendo el DOM. Un valor asignado por JavaScript no llega al estado.
+			const state = { nombre: '', correo: '', terminos: false };
+			const sync = (event) => {
+				const { id, type, value, checked } = event.target;
+				if (id in state) state[id] = type === 'checkbox' ? checked : value;
+				submit.disabled = !(state.nombre && state.correo && state.terminos);
+			};
+			form.addEventListener('input', sync);
+			form.addEventListener('change', sync);
+			form.addEventListener('submit', (event) => {
+				event.preventDefault();
+				const plan = form.querySelector('input[name="plan"]:checked').value;
+				document.querySelector('[role="status"]').textContent = `Cuenta ${plan} creada para ${state.nombre}`;
+			});
+
+			document.querySelector('[aria-label="Buscar en la ayuda"]').addEventListener('keydown', (event) => {
+				if (event.key === 'Enter') field('resultados').textContent = `Resultados para «${event.target.value}»`;
+			});
+
+			const tooltipButton = document.querySelector('[aria-describedby="tip"]');
+			tooltipButton.addEventListener('mouseenter', () => (field('tip').hidden = false));
+			tooltipButton.addEventListener('mouseleave', () => (field('tip').hidden = true));
+
+			// Autocompletado que escucha teclas (keyup), no el evento input.
+			const cities = ['Bogotá', 'Buenos Aires', 'Lima', 'Santiago'];
+			field('ciudad').addEventListener('keyup', (event) => {
+				const text = event.target.value.toLowerCase();
+				document.querySelector('[role="listbox"]').innerHTML = text
+					? cities.filter((c) => c.toLowerCase().startsWith(text)).map((c) => `<li role="option">${c}</li>`).join('')
+					: '';
+			});
+
+			field('nombre-lista').addEventListener('dblclick', (event) => {
+				const input = document.createElement('input');
+				input.setAttribute('aria-label', 'Nombre de la lista');
+				input.value = event.target.textContent;
+				event.target.replaceWith(input);
+				input.focus();
+			});
+
+			document.querySelector('[draggable]').addEventListener('dragstart', (event) => {
+				event.dataTransfer.setData('text/plain', event.target.textContent);
+			});
+			const done = document.querySelector('[aria-label="Hecho"]');
+			done.addEventListener('dragover', (event) => event.preventDefault());
+			done.addEventListener('drop', (event) => {
+				event.preventDefault();
+				const text = event.dataTransfer.getData('text/plain');
+				const item = [...document.querySelectorAll('[draggable]')].find((li) => li.textContent === text);
+				done.append(item);
+			});
+		</script>
+	</body>
+</html>

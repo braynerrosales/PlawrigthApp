@@ -1,0 +1,57 @@
+---
+title: Guía de Playwright
+description: Diseñar, implementar, ejecutar, depurar y mantener automatización profesional con Playwright.
+template: splash
+tableOfContents: false
+hero:
+  title: Aprende Playwright como lo usa un equipo de QA
+  tagline: Desde los fundamentos hasta una automatización profesional, con ejemplos reales que se ejecutan antes de publicarse, buenas prácticas y varios lenguajes.
+  actions:
+    - text: Empezar desde cero
+      link: /fundamentos/que-es-playwright/
+      variant: primary
+    - text: Vengo de Selenium
+      link: "#vengo-de-selenium"
+      variant: secondary
+    - text: Explorar módulos
+      link: "#categorias"
+      variant: secondary
+---
+
+import Progress from '../../components/Progress.astro';
+import RouteSteps from '../../components/home/RouteSteps.astro';
+
+<div class="home-routes">
+	<RouteSteps
+		id="empezar-desde-cero"
+		title="Empezar desde cero"
+		description="Para quien automatiza por primera vez o nunca usó Playwright."
+		first={7}
+	/>
+	<RouteSteps
+		id="vengo-de-selenium"
+		title="Vengo de Selenium"
+		description="Qué cambia en el modelo mental y dónde está cada equivalencia."
+		steps={[
+			{ label: 'Modelo mental' },
+			{ label: 'WebElement → Locator', module: 'web/locators', note: 'Locators' },
+			{ label: 'Waits → Auto-waiting', module: 'web/auto-waiting', note: 'Auto-waiting' },
+			{ label: 'Driver → Browser / Context / Page', module: 'fundamentos/browser-context-page', note: 'Fundamentos' },
+			{ label: 'Migración práctica' },
+		]}
+	/>
+</div>
+
+<h2 id="categorias">Categorías</h2>
+
+<Progress overview />
+
+<p class="home-quick not-content">
+	<span>Lo más buscado:</span>
+	<a href="/web/locators/#strictness"><code>strict mode violation</code></a>
+	<a href="/web/locators/#getbyrole"><code>getByRole</code></a>
+	<a href="/web/auto-waiting/#cuando-la-espera-no-termina-el-error-de-timeout"><code>Timeout exceeded</code></a>
+	<a href="/web/assertions/#texto-valor-y-atributos"><code>toHaveText</code></a>
+	<a href="/api/sesion-y-autenticacion/#iniciar-sesión-una-vez-y-guardar-el-estado"><code>storageState</code></a>
+	<span>o <kbd>Ctrl</kbd> + <kbd>K</kbd> para buscar.</span>
+</p>

@@ -1,0 +1,137 @@
+---
+/**
+ * Ejemplo de código multi-lenguaje leído desde `/snippets`. Salvo con `bare`, exige la
+ * explicación en slots: `what` (qué hace), `why` (por qué), `avoids` (qué problema evita)
+ * y opcionalmente `alternative`. Los errores se lanzan en build, no en el navegador.
+ */
+import { Code } from '@astrojs/starlight/components';
+import LanguageTabs from './LanguageTabs.astro';
+import { LANGUAGES, type LanguageId } from '../lib/languages';
+import { getModule } from '../lib/modules';
+import { getSnippet, snippetPath } from '../lib/snippets';
+
+interface Props {
+	/** `modulo/ejemplo`, por ejemplo `locators/get-by-role`. */
+	id: string;
+	title?: string;
+	/** Solo el código, sin bloque de explicación (lo usan BestPractice y BadPractice). */
+	bare?: boolean;
+	/** Lenguajes donde esta funcionalidad no existe (por ejemplo, algo exclusivo de Playwright Test). */
+	notApplicable?: LanguageId[];
+	/** Ajusta las líneas largas en vez de hacer scroll (para columnas angostas como la portada). */
+	wrap?: boolean;
+}
+
+const { id, title, bare = false, notApplicable = [], wrap = false } = Astro.props;
+const module = getModule(Astro.locals.starlightRoute.entry.data);
+const coverage = module && {
+	...module.languages,
+	...Object.fromEntries(notApplicable.map((lang) => [lang, 'not-applicable' as const])),
+};
+const variants = LANGUAGES.map((lang) => ({ lang, snippet: getSnippet(id, lang.id) }));
+
+if (!variants.some((v) => v.snippet)) {
+	throw new Error(`CodeExample "${id}": no existe ningún snippet (por ejemplo ${snippetPath(id, 'csharp')}).`);
+}
+for (const { lang, snippet } of variants) {
+	if (snippet && notApplicable.includes(lang.id)) {
+		throw new Error(`CodeExample "${id}": ${lang.label} está marcado como notApplicable pero existe ${snippetPath(id, lang.id)}.`);
+	}
+	if (!snippet && coverage?.[lang.id] === 'complete') {
+		throw new Error(
+			`CodeExample "${id}": el módulo declara ${lang.label} como "complete" pero falta ${snippetPath(id, lang.id)}.`,
+		);
+	}
+}
+if (!bare) {
+	for (const slot of ['what', 'why', 'avoids']) {
+		if (!Astro.slots.has(slot)) throw new Error(`CodeExample "${id}": falta la explicación <Fragment slot="${slot}">.`);
+	}
+}
+---
+
+<figure class="code-example">
+	{title && <figcaption>{title}</figcaption>}
+	<LanguageTabs label={`Lenguaje del ejemplo: ${title ?? id}`} coverage={coverage}>
+		{
+			variants.map(
+				({ lang, snippet }) =>
+					snippet && (
+						<Fragment slot={lang.id}>
+							<Code
+								code={snippet.code}
+								lang={lang.code}
+								title={[snippet.file, snippet.runner].filter(Boolean).join(' · ')}
+								mark={snippet.marks}
+								wrap={wrap}
+							/>
+						</Fragment>
+					),
+			)
+		}
+	</LanguageTabs>
+	{
+		!bare && (
+			<dl class="code-example__explain">
+				<dt>Qué hace</dt>
+				<dd><slot name="what" /></dd>
+				<dt>Por qué se hace así</dt>
+				<dd><slot name="why" /></dd>
+				<dt>Qué problema evita</dt>
+				<dd><slot name="avoids" /></dd>
+				{Astro.slots.has('alternative') && (
+					<>
+						<dt>Alternativa</dt>
+						<dd><slot name="alternative" /></dd>
+					</>
+				)}
+			</dl>
+		)
+	}
+</figure>
+
+<style>
+	.code-example {
+		margin: 2rem 0 0;
+	}
+	figcaption {
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.code-example__explain {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0.25rem 1.25rem;
+		margin-top: 0.75rem;
+		padding: 0.25rem 0 0.25rem 1rem;
+		border-left: 2px solid var(--pg-border);
+		font-size: var(--sl-text-sm);
+		line-height: 1.55;
+	}
+	@media (min-width: 50rem) {
+		.code-example__explain {
+			grid-template-columns: max-content minmax(0, 1fr);
+		}
+	}
+	dt {
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	dd {
+		margin: 0;
+		color: var(--sl-color-gray-2);
+		overflow-wrap: anywhere;
+	}
+	dt + dd,
+	dd + dt {
+		margin-top: 0;
+	}
+	@media (max-width: 49.99rem) {
+		dd + dt {
+			margin-top: 0.5rem;
+		}
+	}
+	dd :global(p) {
+		margin: 0;
+	}
+</style>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Iniciar sesión · Tienda QA</title>
+	</head>
+	<body>
+		<nav aria-label="Principal">
+			<a href="/">Inicio</a>
+			<a href="/productos">Productos</a>
+			<a href="/login">Iniciar sesión</a>
+		</nav>
+		<main>
+			<h1>Iniciar sesión</h1>
+			<form id="login">
+				<label>Usuario <input name="usuario" /></label>
+				<label>Contraseña <input name="clave" type="password" /></label>
+				<button>Ingresar</button>
+			</form>
+		</main>
+		<script>
+			// Simula el servidor: valida y redirige a /cuenta un momento después.
+			document.getElementById('login').addEventListener('submit', (event) => {
+				event.preventDefault();
+				setTimeout(() => (location.href = '/cuenta'), 300);
+			});
+		</script>
+	</body>
+</html>

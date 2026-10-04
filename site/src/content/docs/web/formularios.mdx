@@ -1,0 +1,114 @@
+---
+title: Formularios
+description: Probar validaciones de la app, fechas, campos de solo lectura o deshabilitados y el resultado de un envío, más allá de completar campos.
+category: web
+level: intermediate
+order: 9
+readingTime: 15
+tags:
+  - formularios
+  - validación
+  - camino negativo
+  - aria-invalid
+  - role alert
+  - input date
+  - fecha
+  - readonly
+  - disabled
+  - toBeEditable
+  - toBeDisabled
+  - toBeEmpty
+  - submit
+  - Enter
+  - Malformed value
+  - element is not editable
+prerequisites:
+  - Acciones e interacciones
+  - Assertions
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Completar campos ya lo sabes hacer: `fill`, `check` y `selectOption` están en [Acciones e interacciones](/web/acciones/). Este módulo trata lo que un QA tiene que probar **de un formulario**: que rechaza los datos inválidos, que acepta los formatos correctos, que respeta los campos que no se pueden editar y que, al enviarlo, pasa lo que tiene que pasar.
+
+## Qué aprenderás
+
+- Cómo probar el camino negativo: datos inválidos, mensaje de error y estado del campo.
+- Por qué se comprueban los mensajes de la app y no los del navegador.
+- Cómo completar un campo de fecha sin depender del idioma del navegador.
+- Cómo comprobar campos de solo lectura y deshabilitados.
+- Por qué una prueba que envía un formulario tiene que verificar el resultado.
+
+### La página de práctica
+
+Los ejemplos se ejecutan contra una solicitud de envío con número de pedido (solo lectura), correo, fecha de entrega y un código de descuento que se habilita al marcar **Tengo un cupón**. El formulario usa `novalidate`: la validación la hace la app, que muestra un mensaje por campo con `role="alert"` y marca el campo con `aria-invalid="true"`. Tras un envío correcto muestra una confirmación y vacía el formulario.
+
+## El camino negativo: validaciones
+
+<CodeExample id="formularios/validacion" title="Un correo inválido muestra el error de la app">
+	<Fragment slot="what">Escribe `ana@correo` en el correo, completa la fecha, envía y comprueba el mensaje «Ingresa un correo válido», que el campo quedó marcado con `aria-invalid="true"` y que no apareció la confirmación.</Fragment>
+	<Fragment slot="why">El mensaje y `aria-invalid` son parte de la aplicación: los define el equipo, no cambian entre navegadores y son lo que leen los lectores de pantalla. Localizar el error por su rol (`alert`) hace que la prueba siga funcionando aunque cambien los estilos.</Fragment>
+	<Fragment slot="avoids">Evita probar solo el camino feliz: un formulario que acepta cualquier dato también pasa todas las pruebas que solo envían datos válidos.</Fragment>
+	<Fragment slot="alternative">Si la app enlaza el mensaje con `aria-errormessage`, existe la aserción `toHaveAccessibleErrorMessage` (`ToHaveAccessibleErrorMessageAsync` en C#), disponible desde la versión 1.50.</Fragment>
+</CodeExample>
+
+<Aside type="caution" title="No compruebes los mensajes nativos del navegador">
+Si un formulario usa la validación nativa (`required`, `type="email"` sin `novalidate`), el texto del globo de error lo pone el navegador: cambia entre Chromium, Firefox y WebKit, y con el idioma del sistema. Una prueba que compara ese texto pasa en tu máquina y falla en CI. Comprueba el efecto (el formulario no se envió, el campo es inválido) o, mejor, los mensajes propios de la app.
+</Aside>
+
+## Fechas: siempre en formato ISO
+
+<CodeExample id="formularios/fecha" title="Completar un campo de fecha">
+	<Fragment slot="what">Completa la fecha de entrega con `2026-10-04`, comprueba el valor del campo y el resumen «Entrega: 04/10/2026» que muestra la app.</Fragment>
+	<Fragment slot="why">El valor de un `<input type="date">` siempre tiene el formato `yyyy-mm-dd`, aunque el navegador lo muestre como `04/10/2026` o `10/04/2026` según el idioma. `fill` asigna ese valor directamente, sin escribir tecla por tecla en el control.</Fragment>
+	<Fragment slot="avoids">Evita pruebas que escriben la fecha en el formato que se ve en pantalla y fallan cuando el navegador de CI usa otro idioma.</Fragment>
+	<Fragment slot="alternative">Si la fecha no es un `input type="date"` sino un calendario propio de la app, se opera como cualquier componente: clic en el campo y luego en el día con `getByRole`.</Fragment>
+</CodeExample>
+
+## Campos de solo lectura y deshabilitados
+
+<CodeExample id="formularios/readonly-deshabilitado" title="Solo lectura y deshabilitado">
+	<Fragment slot="what">Comprueba que el número de pedido tiene valor pero no es editable, que el código de descuento empieza deshabilitado, marca **Tengo un cupón** y comprueba que el código se habilita y acepta texto.</Fragment>
+	<Fragment slot="why">Son dos estados distintos: un campo `readonly` se ve y se envía, pero no se edita; uno `disabled` no se puede usar en absoluto. Para Playwright, un elemento es editable cuando está habilitado y no es de solo lectura; `toBeEditable` y `toBeDisabled` comprueban exactamente esas reglas.</Fragment>
+	<Fragment slot="avoids">Evita reglas de negocio sin probar («el número de pedido no se puede cambiar») y pruebas que intentan escribir en un campo bloqueado y terminan en timeout sin explicar por qué.</Fragment>
+	<Fragment slot="alternative">Si intentas `fill` sobre un campo no editable, la acción espera a que lo sea y falla por timeout con `element is not editable` en el registro de llamadas (ver [Auto-waiting y actionability](/web/auto-waiting/)).</Fragment>
+</CodeExample>
+
+## Enviar y comprobar el resultado
+
+<BadPractice title="enviar el formulario y no comprobar nada" id="formularios/sin-verificar-envio">
+	La prueba completa los campos, hace clic en **Enviar solicitud** y termina en verde. Pero la app rechazó el correo: el mensaje de error está en pantalla y la solicitud nunca se envió. Un clic que no falla solo prueba que el botón existía.
+</BadPractice>
+
+<BestPractice title="comprobar el resultado y el estado posterior" id="formularios/envio-exitoso">
+	Envía con Enter desde el campo de correo, como haría una persona, y comprueba la confirmación «Solicitud PED-1042 enviada», que no hay errores y que el formulario quedó vacío para la siguiente solicitud. Si cualquiera de esas cosas no ocurre, la prueba falla y dice cuál.
+</BestPractice>
+
+## Errores comunes
+
+- **«strict mode violation» al usar `getByLabel`**: dos etiquetas contienen el mismo texto (por ejemplo «Tengo un código» y «Código de descuento»). Usa un texto más específico, `exact: true` o `getByRole` con el nombre completo.
+- **`getByRole('alert')` encuentra varios elementos**: hay un error en más de un campo. Acota la búsqueda al campo o comprueba la lista completa con `toHaveText([...])`.
+- **`fill` falla con «Malformed value» en una fecha**: el valor no está en formato `yyyy-mm-dd` (por ejemplo, `04/10/2026`). Pásalo en formato ISO.
+- **El formulario no se envía con Enter**: el foco no está dentro del formulario o el formulario no tiene botón de envío. Comprueba que pulsas Enter sobre un campo del formulario.
+- **La prueba de validación pasa en local y falla en CI**: compara el texto de un mensaje nativo del navegador. Compara los mensajes propios de la app.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `SendKeys` sobre un `input type="date"` | `fill('2026-10-04')` | En Selenium se escriben teclas sobre el control, cuyo formato visible depende del idioma; `fill` usa siempre el valor ISO. |
+| `GetAttribute("validationMessage")` | Mensajes de la app con `getByRole('alert')` | El mensaje nativo depende del navegador y del idioma. |
+| `GetAttribute("aria-invalid")` + `Assert` | `toHaveAttribute('aria-invalid', 'true')` | La aserción reintenta hasta que la app actualiza el campo. |
+| `Enabled` / `GetAttribute("readonly")` | `toBeEnabled()` / `toBeEditable()` | Aserciones que esperan; en Selenium se lee el estado una sola vez. |
+| `element.Submit()` | `press('Enter')` o `click()` en el botón | Playwright reproduce lo que hace la persona; los eventos de envío de la app se disparan igual. |

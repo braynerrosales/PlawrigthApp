@@ -1,0 +1,136 @@
+---
+title: Assertions
+description: Comprobar el resultado con aserciones web-first que reintentan, en lugar de leer un valor una vez y compararlo.
+category: web
+level: beginner
+order: 7
+readingTime: 20
+tags:
+  - assertions
+  - aserciones
+  - expect
+  - toBeVisible
+  - toHaveText
+  - toHaveCount
+  - toHaveValue
+  - expect.soft
+  - web-first
+prerequisites:
+  - Locators
+  - Auto-waiting y actionability
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Una prueba sin aserción solo comprueba que no hubo excepciones. La aserción es lo que dice **qué resultado esperas**. En Playwright, la mayoría de las aserciones sobre la página son *web-first*: reciben un Locator y **reintentan** hasta que la condición se cumple o vence el timeout (5 segundos por defecto).
+
+## Qué aprenderás
+
+- La diferencia entre una aserción web-first y una aserción genérica.
+- Las aserciones más usadas: visibilidad, estado, texto, valor, atributos, listas y página.
+- Cómo negar una aserción y cambiar su timeout.
+- Qué son las *soft assertions* y en qué lenguajes existen.
+
+<Aside title="Dónde viven las aserciones en cada lenguaje">
+En TypeScript y JavaScript, `expect` viene de `@playwright/test`. En C#, `Expect(...)` es parte de `Microsoft.Playwright` y las clases base (`PageTest`, etc.) lo exponen directamente; los métodos terminan en `Async` (`ToHaveTextAsync`). En Python, `expect` se importa de `playwright.sync_api` y los métodos usan snake_case (`to_have_text`). En Java, `assertThat` se importa de forma estática desde `PlaywrightAssertions` y los métodos se leen como afirmaciones (`hasText`, `isVisible`). Las aserciones de NUnit, MSTest, xUnit o JUnit siguen sirviendo para valores que no vienen de la página.
+</Aside>
+
+## Web-first vs leer y comparar
+
+<BadPractice title="leer el valor una vez y compararlo" id="assertions/lectura-unica">
+	`textContent()` devuelve el texto **de ese instante**: «Cargando…». La comparación falla aunque medio segundo después la página muestre «3 pedidos». Para «arreglarlo» se suele agregar una espera fija, que vuelve la prueba lenta e igual de frágil.
+</BadPractice>
+
+<BestPractice title="pasar el Locator a la aserción" id="assertions/web-first">
+	`toHaveText` vuelve a leer el texto en cada intento hasta que coincide. La prueba es igual de corta, no tiene esperas y falla solo si el texto correcto nunca aparece.
+</BestPractice>
+
+La regla: si el valor viene de la página, **pasa el Locator a `expect`**; no extraigas el valor primero. Usa `textContent`, `inputValue` o `count` solo cuando necesites el dato para otra cosa (por ejemplo, guardarlo y usarlo en un paso posterior).
+
+### La página de práctica
+
+Los ejemplos siguientes usan la tienda del módulo [Locators](/web/locators/) (productos, carrito, buscador, botón **Guardar**) y la pantalla de pedidos del módulo [Auto-waiting](/web/auto-waiting/).
+
+## Visibilidad y estado
+
+<CodeExample id="assertions/estado" title="Visible, oculto, habilitado, deshabilitado">
+	<Fragment slot="what">Comprueba que el encabezado Productos está visible, que el mensaje «Cambios guardados» no está, que el botón del monitor agotado está deshabilitado y que **Guardar** está habilitado.</Fragment>
+	<Fragment slot="why">`toBeHidden` también se cumple si el elemento no existe, que es lo habitual para mensajes que todavía no aparecieron. `toBeDisabled` y `toBeEnabled` comprueban lo mismo que la actionability de las acciones.</Fragment>
+	<Fragment slot="avoids">Evita comprobar estados leyendo atributos a mano (`getAttribute('disabled')`), que no tiene en cuenta un `fieldset` deshabilitado ni `aria-disabled`.</Fragment>
+</CodeExample>
+
+## Texto, valor y atributos
+
+<CodeExample id="assertions/texto-y-valor" title="Lo que muestra cada elemento">
+	<Fragment slot="what">Comprueba el contador del carrito, que el aviso de envío contiene «mayores a $50», que el buscador es de tipo `search` y que, después de escribir, su valor es «teclado».</Fragment>
+	<Fragment slot="why">`toHaveText` compara el texto completo y `toContainText` una parte. `toHaveValue` es para campos de formulario: su contenido no es texto del DOM sino el valor del control.</Fragment>
+	<Fragment slot="avoids">Evita leer el valor de un campo como si fuera texto: lo que escribe la persona en un `input` es su valor, no texto del DOM, y se comprueba con `toHaveValue`.</Fragment>
+	<Fragment slot="alternative">Ambas aceptan expresiones regulares cuando parte del texto varía, por ejemplo una fecha o un número de pedido.</Fragment>
+</CodeExample>
+
+## Listas
+
+<CodeExample id="assertions/listas" title="Cantidad y contenido de una lista">
+	<Fragment slot="what">Comprueba que hay 3 productos y que sus títulos son, en orden, Teclado mecánico, Mouse inalámbrico y Monitor 4K.</Fragment>
+	<Fragment slot="why">`toHaveCount` espera la cantidad exacta. `toHaveText` con un arreglo compara cada elemento con su texto esperado, en orden, en una sola aserción que reintenta como un todo.</Fragment>
+	<Fragment slot="avoids">Evita recorrer la lista con un bucle y comparar elemento por elemento, que no reintenta y da mensajes de error poco claros.</Fragment>
+</CodeExample>
+
+## Página
+
+<CodeExample id="assertions/pagina" title="Título de la página">
+	<Fragment slot="what">Comprueba el título de la pestaña.</Fragment>
+	<Fragment slot="why">Las aserciones de página reciben `page` en lugar de un Locator. Las más usadas son `toHaveTitle` y `toHaveURL`; esta última es la forma correcta de verificar una redirección.</Fragment>
+	<Fragment slot="avoids">Evita comparar `page.url` justo después de un clic: la navegación puede no haber terminado.</Fragment>
+</CodeExample>
+
+## Negación y timeout
+
+<CodeExample id="assertions/negacion-y-timeout" title="Esperar a que algo desaparezca">
+	<Fragment slot="what">Después de cargar pedidos, espera a que deje de verse «Cargando…» y comprueba que **Exportar** se habilita, con un timeout de 10 segundos para esa aserción.</Fragment>
+	<Fragment slot="why">`not` (`Not` en C#) invierte la aserción y también reintenta hasta que deja de cumplirse. El timeout propio sirve para una operación que se sabe lenta, sin aumentar el de toda la suite.</Fragment>
+	<Fragment slot="avoids">Evita subir el timeout global porque una sola pantalla es lenta, lo que hace que cualquier fallo tarde más en reportarse.</Fragment>
+	<Fragment slot="alternative">El timeout por defecto de las aserciones se cambia en la configuración de Playwright Test (`expect.timeout`) en TypeScript y JavaScript, con `SetDefaultExpectTimeout` en C#, con `PlaywrightAssertions.setDefaultAssertionTimeout` en Java y con `expect.set_options(timeout=...)` en Python.</Fragment>
+</CodeExample>
+
+## Soft assertions
+
+Una aserción normal detiene la prueba en el primer fallo. Una *soft assertion* registra el fallo y deja que la prueba continúe, para ver todos los problemas de una pantalla en una sola ejecución. La prueba se marca como fallida al final.
+
+<CodeExample id="assertions/soft" title="Revisar varias cosas aunque una falle" notApplicable={['csharp', 'python']}>
+	<Fragment slot="what">Comprueba tres elementos de la tienda; si uno falla, las otras dos comprobaciones igual se ejecutan.</Fragment>
+	<Fragment slot="why">`expect.soft` es parte de Playwright Test. Es útil en pantallas con muchos datos independientes, como un resumen o un dashboard.</Fragment>
+	<Fragment slot="avoids">Evita corregir un fallo, volver a ejecutar y descubrir el siguiente, uno por uno.</Fragment>
+	<Fragment slot="alternative">En C# no existe un equivalente nativo: `Expect(...)` lanza una excepción en el primer fallo. Las agrupaciones de aserciones de NUnit (`Assert.Multiple`) solo recogen aserciones de NUnit, no las de Playwright. En Python tampoco: `expect` de `playwright.sync_api` no tiene modo soft. En Java, Playwright tampoco tiene modo soft, pero `assertAll` de JUnit 5 sí sirve: ejecuta todas las comprobaciones y reporta juntos los fallos, también los de `assertThat` de Playwright (es el ejemplo de la tab Java).</Fragment>
+</CodeExample>
+
+<Aside type="caution" title="No abuses de soft">
+Si después de una soft assertion fallida la prueba sigue haciendo acciones, esas acciones pueden fallar por la misma causa y llenar el reporte de errores secundarios. Úsalas para comprobar, no antes de actuar.
+</Aside>
+
+## Errores comunes
+
+- **La aserción pasa aunque el dato es incorrecto**: olvidaste el `await`. Sin `await`, la aserción web-first nunca se evalúa (en TypeScript, el lint `no-floating-promises` lo detecta; en C#, el compilador avisa con CS4014).
+- **`toHaveText` falla con un texto que «se ve igual»**: compara el texto completo del elemento, incluido el de sus hijos (por ejemplo, un precio dentro de la misma tarjeta). Usa un Locator más preciso o `toContainText`.
+- **`toBeVisible` falla en un elemento que «se ve»**: el Locator encuentra otro elemento, oculto, con el mismo texto. Acota el Locator.
+- **La aserción tarda 5 segundos en fallar siempre**: es el timeout por defecto; no lo bajes para que la suite «vaya más rápido», porque las aserciones que pasan terminan en cuanto se cumplen.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `Assert.That(element.Text, Is.EqualTo(...))` | `Expect(locator).ToHaveTextAsync(...)` | La de Playwright reintenta; la de Selenium compara una sola vez. |
+| `WebDriverWait` hasta que el texto cambie y luego `Assert` | Una aserción web-first | Esperar y afirmar en un solo paso. |
+| `element.Displayed` | `toBeVisible()` | Reintenta y no lanza `StaleElementReferenceException`. |
+| `FindElements(...).Count` | `toHaveCount(n)` | Espera a que la cantidad sea la correcta. |

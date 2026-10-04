@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Sesión requerida · Portal QA</title>
+	</head>
+	<body>
+		<p>Necesitas iniciar sesión.</p>
+		<script>
+			// Sin cookie de sesión válida, la aplicación manda a la persona al login.
+			location.replace('/login');
+		</script>
+	</body>
+</html>

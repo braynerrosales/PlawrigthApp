@@ -1,0 +1,292 @@
+---
+/**
+ * Tabs C# | TypeScript | JavaScript | Java | Python sincronizadas en toda la página y
+ * persistidas en localStorage. Cada lenguaje se pasa como slot con su id (`csharp`,
+ * `typescript`, ...). Si falta el slot, la tab sigue visible y explica por qué no hay
+ * contenido: nunca se rellena con una traducción supuesta entre bindings.
+ */
+import { COVERAGE, COVERAGE_GLYPH, DEFAULT_LANGUAGE, LANGUAGES, type Coverage, type LanguageId } from '../lib/languages';
+
+interface Props {
+	/** Nombre accesible del tablist. */
+	label: string;
+	/** Cobertura del módulo por lenguaje, para explicar las variantes ausentes. */
+	coverage?: Partial<Record<LanguageId, Coverage>>;
+}
+
+const { label, coverage = {} } = Astro.props;
+const uid = `lt-${Math.random().toString(36).slice(2, 8)}`;
+
+function missingReason(lang: (typeof LANGUAGES)[number]) {
+	switch (coverage[lang.id] ?? 'pending') {
+		case 'not-applicable':
+			return `No aplica en ${lang.label}: esta funcionalidad no existe de la misma manera en ese binding.`;
+		case 'partial':
+			return `Este ejemplo todavía no tiene versión en ${lang.label}. El módulo tiene cobertura parcial en este lenguaje.`;
+		default:
+			return `Pendiente: el módulo aún no cubre ${lang.label}.`;
+	}
+}
+
+const panels = await Promise.all(
+	LANGUAGES.map(async (lang) => ({
+		lang,
+		html: Astro.slots.has(lang.id) ? await Astro.slots.render(lang.id) : undefined,
+	})),
+);
+---
+
+<language-tabs class="lang-tabs">
+	<div class="lang-tabs__list not-content" role="tablist" aria-label={label}>
+		{
+			panels.map(({ lang, html }) => {
+				const selected = lang.id === DEFAULT_LANGUAGE;
+				// Sin cobertura declarada (fuera de un módulo) solo se marca lo que falta.
+				const state = coverage[lang.id] ?? (html ? undefined : 'pending');
+				const status = state && COVERAGE[state];
+				return (
+					<button
+						type="button"
+						role="tab"
+						id={`${uid}-tab-${lang.id}`}
+						aria-controls={`${uid}-panel-${lang.id}`}
+						aria-selected={selected ? 'true' : 'false'}
+						tabindex={selected ? 0 : -1}
+						data-lang={lang.id}
+						data-available={html ? 'true' : 'false'}
+						title={status ? `${lang.label}: ${status}` : undefined}
+					>
+						{lang.label}
+						{state && <span class="glyph" aria-hidden="true">{COVERAGE_GLYPH[state]}</span>}
+						{status && <span class="sr-only">({status})</span>}
+					</button>
+				);
+			})
+		}
+	</div>
+	{
+		panels.map(({ lang, html }) => (
+			<div
+				class="lang-tabs__panel"
+				role="tabpanel"
+				id={`${uid}-panel-${lang.id}`}
+				aria-labelledby={`${uid}-tab-${lang.id}`}
+				data-lang={lang.id}
+				hidden={lang.id !== DEFAULT_LANGUAGE}
+			>
+				{html ? (
+					<Fragment set:html={html} />
+				) : (
+					<div class="lang-tabs__missing">
+						<p>
+							<strong>{missingReason(lang)}</strong> No mostramos una traducción automática: las APIs no
+							siempre son equivalentes entre bindings.
+						</p>
+						<dl>
+							<dt>{lang.id === 'java' ? 'Dependencia Maven' : 'Instalación'}</dt>
+							<dd>{lang.setup.map((command) => <code>{command}</code>)}</dd>
+							<dt>Runner</dt>
+							<dd>{lang.runner}</dd>
+							<dt>Documentación</dt>
+							<dd>
+								<a href={lang.docs} rel="noopener">{lang.docs.replace('https://', '')}</a>
+							</dd>
+						</dl>
+					</div>
+				)}
+			</div>
+		))
+	}
+</language-tabs>
+
+<script>
+	import {
+		DEFAULT_LANGUAGE,
+		LANGUAGE_CHANGE_EVENT as CHANGE_EVENT,
+		LANGUAGE_IDS,
+		LANGUAGE_STORAGE_KEY,
+		type LanguageId,
+	} from '../lib/languages';
+
+	function readStored(): LanguageId {
+		try {
+			const value = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+			return LANGUAGE_IDS.includes(value as LanguageId) ? (value as LanguageId) : DEFAULT_LANGUAGE;
+		} catch {
+			return DEFAULT_LANGUAGE;
+		}
+	}
+
+	class LanguageTabs extends HTMLElement {
+		get tabs() {
+			return [...this.querySelectorAll<HTMLButtonElement>(':scope > [role="tablist"] > [role="tab"]')];
+		}
+
+		connectedCallback() {
+			this.select(readStored());
+			const list = this.querySelector(':scope > [role="tablist"]')!;
+			list.addEventListener('click', (event) => {
+				const tab = (event.target as Element).closest<HTMLButtonElement>('[role="tab"]');
+				if (tab) choose(tab.dataset.lang as LanguageId, this, tab);
+			});
+			list.addEventListener('keydown', (event) => this.onKeydown(event as KeyboardEvent));
+		}
+
+		onKeydown(event: KeyboardEvent) {
+			const tabs = this.tabs;
+			const current = tabs.findIndex((t) => t === document.activeElement);
+			if (current === -1) return;
+			const next = {
+				ArrowRight: (current + 1) % tabs.length,
+				ArrowLeft: (current - 1 + tabs.length) % tabs.length,
+				Home: 0,
+				End: tabs.length - 1,
+			}[event.key];
+			if (next === undefined) return;
+			event.preventDefault();
+			choose(tabs[next]!.dataset.lang as LanguageId, this, tabs[next]);
+		}
+
+		select(lang: LanguageId) {
+			for (const tab of this.tabs) {
+				const selected = tab.dataset.lang === lang;
+				tab.setAttribute('aria-selected', String(selected));
+				tab.tabIndex = selected ? 0 : -1;
+			}
+			for (const panel of this.querySelectorAll<HTMLElement>(':scope > [role="tabpanel"]')) {
+				panel.hidden = panel.dataset.lang !== lang;
+			}
+		}
+	}
+
+	/** Cambia el lenguaje en todas las tabs de la página manteniendo la posición del bloque activo. */
+	function choose(lang: LanguageId, origin: LanguageTabs, focus?: HTMLElement) {
+		const top = origin.getBoundingClientRect().top;
+		try {
+			localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+		} catch {}
+		document.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: lang }));
+		window.scrollBy(0, origin.getBoundingClientRect().top - top);
+		focus?.focus();
+	}
+
+	document.addEventListener(CHANGE_EVENT, (event) => {
+		const lang = (event as CustomEvent<LanguageId>).detail;
+		document.querySelectorAll<LanguageTabs>('language-tabs').forEach((el) => el.select(lang));
+	});
+
+	// Otra pestaña del navegador cambió el lenguaje preferido.
+	window.addEventListener('storage', (event) => {
+		if (event.key === LANGUAGE_STORAGE_KEY) {
+			document.querySelectorAll<LanguageTabs>('language-tabs').forEach((el) => el.select(readStored()));
+		}
+	});
+
+	customElements.define('language-tabs', LanguageTabs);
+</script>
+
+<style>
+	/* La barra de lenguajes forma parte de la superficie del código: oscura en ambos temas. */
+	.lang-tabs {
+		display: block;
+		margin-top: 1rem;
+	}
+	.lang-tabs__list {
+		display: flex;
+		overflow-x: auto;
+		padding-inline: 0.5rem;
+		background: var(--pg-code-head);
+		border: 1px solid var(--pg-code-border);
+		border-bottom: 0;
+		border-radius: var(--pg-r-md) var(--pg-r-md) 0 0;
+		scrollbar-width: thin;
+	}
+	[role='tab'] {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		min-height: 2.5rem;
+		padding: 0 0.7rem;
+		border: 0;
+		border-bottom: 2px solid transparent;
+		background: none;
+		color: var(--pg-code-muted);
+		font: 500 var(--sl-text-xs) / 1 var(--__sl-font);
+		cursor: pointer;
+	}
+	[role='tab']:hover {
+		color: var(--pg-code-fg);
+	}
+	[role='tab'][aria-selected='true'] {
+		color: #fff;
+		border-bottom-color: var(--pg-code-accent);
+		font-weight: 600;
+	}
+	.glyph {
+		font-family: var(--__sl-font-mono);
+		font-size: 0.85em;
+		opacity: 0.85;
+	}
+	[role='tab'][data-available='false'] {
+		opacity: 0.7;
+	}
+	[role='tab']:focus-visible {
+		outline: 2px solid var(--pg-code-accent);
+		outline-offset: -2px;
+	}
+	.lang-tabs__panel :global(.expressive-code) {
+		margin: 0;
+	}
+	.lang-tabs__panel :global(.expressive-code .frame),
+	.lang-tabs__panel :global(.expressive-code .frame pre) {
+		border-top-left-radius: 0;
+		border-top-right-radius: 0;
+	}
+	.lang-tabs__missing {
+		margin: 0;
+		padding: 1rem 1.1rem;
+		background: var(--pg-code-bg);
+		border: 1px solid var(--pg-code-border);
+		border-radius: 0 0 var(--pg-r-md) var(--pg-r-md);
+		color: var(--pg-code-muted);
+		font-size: var(--sl-text-sm);
+	}
+	.lang-tabs__missing p {
+		margin: 0;
+	}
+	.lang-tabs__missing strong {
+		color: var(--pg-code-fg);
+	}
+	.lang-tabs__missing dl {
+		display: grid;
+		grid-template-columns: max-content minmax(0, 1fr);
+		gap: 0.35rem 1rem;
+		margin: 0.85rem 0 0;
+		padding-top: 0.85rem;
+		border-top: 1px solid var(--pg-code-border);
+		font-size: var(--sl-text-xs);
+	}
+	.lang-tabs__missing dt {
+		margin: 0;
+		color: var(--pg-code-muted);
+	}
+	.lang-tabs__missing dd {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		margin: 0;
+		color: var(--pg-code-fg);
+		overflow-wrap: anywhere;
+	}
+	.lang-tabs__missing code {
+		padding: 0.05rem 0.4rem;
+		border-radius: var(--pg-r-sm);
+		background: var(--pg-code-head);
+		color: var(--pg-code-fg);
+		font-size: 0.95em;
+	}
+	.lang-tabs__missing a {
+		color: var(--pg-code-accent);
+	}
+</style>

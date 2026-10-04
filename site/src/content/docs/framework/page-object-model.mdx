@@ -1,0 +1,147 @@
+---
+title: Page Object Model
+description: Centralizar los locators y las acciones de cada pantalla en clases reutilizables para que un cambio en la interfaz se corrija en un solo lugar, sin esconder las verificaciones.
+category: framework
+level: intermediate
+order: 15
+readingTime: 18
+tags:
+  - page object
+  - POM
+  - component object
+  - fixtures
+  - test.extend
+  - SetUp
+  - mantenibilidad
+  - PageFactory
+prerequisites:
+  - Locators
+  - Acciones e interacciones
+  - Assertions
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Cuando una suite crece, las mismas pantallas aparecen en decenas de pruebas. Si cada prueba escribe sus propios `getByLabel` y `getByRole`, un cambio de texto en la interfaz obliga a editarlas todas. Un **Page Object** es una clase que representa una pantalla (o una parte de ella): guarda sus locators en un solo lugar y ofrece métodos con la intención del usuario, como `registrar(datos)`. La documentación de Playwright lo resume en dos beneficios: simplifica la escritura con una API de más alto nivel y simplifica el mantenimiento al capturar los selectores en un solo lugar.
+
+## Qué aprenderás
+
+- Qué problema resuelve un Page Object y cuándo no vale la pena.
+- Cómo escribir uno en TypeScript, JavaScript, C#, Java y Python: locators como propiedades y métodos de intención.
+- Por qué las aserciones se quedan en la prueba.
+- Cómo modelar componentes repetidos con un Locator raíz (Component Objects).
+- Cómo entregar el Page Object a cada prueba: fixtures en Playwright Test, `[SetUp]` en NUnit.
+- Qué no poner en un Page Object y cómo evitar el "god object".
+
+### La página de práctica
+
+Los ejemplos reutilizan dos páginas de módulos anteriores: el formulario de registro de [Acciones e interacciones](/web/acciones/) (nombre, correo, país, plan, términos y un botón **Crear cuenta** que solo se habilita con los eventos reales) y la tienda de [Locators](/web/locators/), con tarjetas de producto que repiten la misma estructura.
+
+## El problema: locators repetidos en cada prueba
+
+<BadPractice title="repetir los mismos locators en cada prueba" id="page-object-model/locators-duplicados">
+	Las dos pruebas funcionan, pero cada una describe la pantalla por su cuenta. Si mañana la etiqueta «Correo electrónico» pasa a ser «Email», hay que encontrar y editar cada `getByLabel` de cada prueba que toque el registro. Con diez pruebas es tedioso; con doscientas, alguna se queda sin corregir y falla por un motivo que no tiene nada que ver con lo que verifica.
+</BadPractice>
+
+## Un Page Object
+
+<CodeExample id="page-object-model/registro-page" title="Page Object del formulario de registro">
+	<Fragment slot="what">Define la clase `RegistroPage`: recibe la página, crea en el constructor un Locator por cada control y expone dos métodos de intención: `completar` (llena los datos) y `registrar` (completa, acepta los términos y envía).</Fragment>
+	<Fragment slot="why">Es la estructura que muestra la documentación de Playwright: en TypeScript, propiedades `readonly` de tipo `Locator` asignadas en el constructor; en JavaScript, las mismas propiedades sin `readonly`, con los tipos en comentarios JSDoc; en C#, el `IPage` en un campo privado y propiedades `ILocator`; en Java, campos `final` de tipo `Locator`; en Python, atributos asignados en `__init__`. Crear los locators en el constructor no busca nada en la página (un Locator solo describe cómo encontrar el elemento), así que el Page Object se puede construir antes de cargarla. Los locators quedan públicos para que la prueba pueda verificarlos.</Fragment>
+	<Fragment slot="avoids">Evita que cada prueba conozca la estructura de la pantalla: si cambia una etiqueta, se corrige una línea del constructor.</Fragment>
+	<Fragment slot="alternative">Para controles que dependen de un dato, como el radio de cada plan, usa un método que devuelva el Locator (`plan(nombre)`) en lugar de una propiedad por opción.</Fragment>
+</CodeExample>
+
+<Aside type="note" title="Dónde vive el archivo">
+En un proyecto real el Page Object va en su propio archivo (por ejemplo `pages/registro-page.ts` o `Pages/RegistroPage.cs`) y las pruebas lo importan o lo reciben de un fixture.
+</Aside>
+
+## La prueba con el Page Object
+
+Es el mismo caso QA de [Acciones e interacciones](/web/acciones/), que ya anunciaba que en un framework real viviría en un Page Object.
+
+<CodeExample id="page-object-model/usar-page-object" title="Pruebas que leen como el caso de uso">
+	<Fragment slot="what">Crea el Page Object con la página de la prueba, registra una cuenta Pro y verifica el mensaje de confirmación. La segunda prueba solo completa los datos y verifica que el botón sigue deshabilitado sin aceptar los términos.</Fragment>
+	<Fragment slot="why">La prueba describe **qué** hace el usuario y **qué** se espera; el **cómo** encontrar cada control queda en el Page Object. Las aserciones siguen en la prueba (como en la documentación de Playwright) porque son el propósito de la prueba: al leerla se ve qué se verifica sin abrir otra clase.</Fragment>
+	<Fragment slot="avoids">Evita dos extremos: pruebas llenas de locators y Page Objects que verifican cosas a escondidas, donde una prueba pasa o falla por algo que no está escrito en ella.</Fragment>
+	<Fragment slot="alternative">Algunos equipos añaden métodos de verificación al Page Object (por ejemplo, `verificarCuentaCreada(plan, nombre)`) cuando la misma combinación de aserciones se repite en muchas pruebas. Si lo haces, que el nombre diga qué verifica, que use las aserciones web con reintento (`expect`) y que no sea la única forma de comprobar algo.</Fragment>
+</CodeExample>
+
+<BestPractice title="métodos con la intención del usuario" id="page-object-model/usar-page-object">
+	`registrar(datos)` dice lo que hace una persona; `clickBotonAzul()` o `llenarInput3()` solo repiten la implementación con otro nombre. Expón además los locators que las pruebas necesitan verificar, en lugar de crear un método por cada aserción posible.
+</BestPractice>
+
+## Component Objects: partes que se repiten
+
+No todo es una página. Una tarjeta de producto, una fila de tabla o un diálogo aparecen muchas veces y en varias pantallas. Para ellos conviene un objeto que recibe un **Locator raíz** en lugar de la página y busca todo dentro de él.
+
+<CodeExample id="page-object-model/component-object" title="Tarjeta de producto con Locator raíz">
+	<Fragment slot="what">`TarjetaProducto` recibe el Locator de una tarjeta y define dentro de ella el nombre y el botón «Agregar al carrito». `TiendaPage.producto(nombre)` filtra la tarjeta cuyo encabezado coincide y la envuelve en el componente. La prueba agrega el mouse al carrito y verifica que el botón del monitor agotado está deshabilitado.</Fragment>
+	<Fragment slot="why">Los locators encadenados a la raíz (`raiz.getByRole(...)`) solo buscan dentro de esa tarjeta, así que tres tarjetas con el mismo botón no producen una violación de modo estricto. El mismo componente sirve en cualquier página donde aparezca la tarjeta.</Fragment>
+	<Fragment slot="avoids">Evita un Page Object con métodos como `agregarTeclado()`, `agregarMouse()` y `agregarMonitor()`, o con índices (`nth(1)`) que se rompen cuando cambia el orden de los productos.</Fragment>
+</CodeExample>
+
+## Entregar el Page Object a cada prueba
+
+Crear el Page Object en cada prueba es una línea, pero se repite. Cada binding tiene su propia herramienta para hacerlo una vez, y no son la misma cosa.
+
+### TypeScript, JavaScript y Python: fixtures
+
+<CodeExample id="page-object-model/fixture" title="Fixture que entrega el Page Object" notApplicable={['csharp', 'java']}>
+	<Fragment slot="what">Extiende `test` con un fixture `registroPage`: abre la página, crea el Page Object y se lo entrega a la prueba con `use`. La prueba lo pide por nombre en sus parámetros. En Python, un fixture de pytest hace lo mismo: crea el Page Object y lo devuelve (o lo entrega con `yield` si después hay limpieza).</Fragment>
+	<Fragment slot="why">Es el patrón de la documentación de fixtures de Playwright Test y de pytest. Los fixtures son bajo demanda: solo se preparan los que la prueba pide. Lo que va antes de `use` es la preparación y lo que va después, la limpieza, en el mismo lugar.</Fragment>
+	<Fragment slot="avoids">Evita repetir `new RegistroPage(page)` y la navegación en cada prueba, y evita variables compartidas en `beforeEach`.</Fragment>
+	<Fragment slot="alternative">En un proyecto real el `test` extendido se exporta desde un archivo (por ejemplo `fixtures.ts`) y todas las pruebas lo importan en lugar del de `@playwright/test`. Los fixtures son una funcionalidad de Playwright Test: no existen en Microsoft.Playwright para .NET ni en Playwright para Java.</Fragment>
+</CodeExample>
+
+### C# y Java (y la alternativa en TypeScript y JavaScript): un hook de preparación
+
+<CodeExample id="page-object-model/setup" title="Crear el Page Object en la preparación" notApplicable={['python']}>
+	<Fragment slot="what">En C#, una clase base abstracta crea el Page Object en un método `[SetUp]` y las clases de prueba heredan de ella y usan la propiedad `Registro`. En Java, lo mismo con un método `@BeforeEach` de JUnit y un campo de la clase. En TypeScript y JavaScript, con `test.beforeEach` y una variable del archivo.</Fragment>
+	<Fragment slot="why">Con NUnit, la forma de preparar algo antes de cada prueba es `[SetUp]`. NUnit ejecuta primero los `[SetUp]` de las clases base, así que cuando corre `CrearPageObject` la `Page` de `PageTest` ya existe. JUnit hace lo mismo con los `@BeforeEach` de la clase base que crea `page`.</Fragment>
+	<Fragment slot="avoids">Evita repetir la creación en cada prueba de C# y Java. En TypeScript y JavaScript funciona, pero comparte estado mediante una variable mutable; por eso allí se prefiere el fixture. En Python no hay un hook equivalente con acceso a `page` fuera de los fixtures: se usa el fixture del ejemplo anterior.</Fragment>
+</CodeExample>
+
+## Qué no poner en un Page Object
+
+- **Aserciones genéricas escondidas**: un `registrar()` que además verifica el mensaje hace que la prueba "pase" sin decir qué comprobó, y te impide usarlo en el camino negativo.
+- **Esperas fijas** (`waitForTimeout`, `Thread.Sleep`): las acciones y las aserciones web ya esperan (ver [Auto-waiting y actionability](/web/auto-waiting/)). Una espera fija dentro del Page Object la heredan todas las pruebas.
+- **Lógica de datos**: generar usuarios, leer archivos o llamar a la base de datos no es responsabilidad de la pantalla. El Page Object recibe los datos ya preparados (`DatosRegistro`).
+- **Resultados de búsquedas guardados**: guarda Locators, no textos ni conteos leídos en el constructor; esos valores quedan viejos en cuanto la página cambia.
+
+### El "god object"
+
+Un `AppPage` con todos los locators y métodos de la aplicación es igual de difícil de mantener que no tener Page Objects. Señales de alarma: cientos de líneas, métodos de pantallas distintas en la misma clase, o pruebas que solo usan un 5 % de ella. Divide por pantalla y extrae a Component Objects las partes que se repiten (encabezado, menú, tarjetas, diálogos). Una página puede componer componentes, como `TiendaPage.producto()` en el ejemplo.
+
+### Cuándo no vale la pena
+
+Si una pantalla aparece en una sola prueba, o estás explorando con una prueba desechable, un Page Object solo añade una capa. Créalo cuando una segunda prueba necesite la misma pantalla: ahí empieza la duplicación que evita.
+
+## Errores comunes
+
+- **Llamar a `await` en el constructor**: los constructores no pueden ser asíncronos. Crea los locators en el constructor (no esperan nada) y deja la navegación en un método como `goto()` o en el fixture.
+- **«strict mode violation» al reutilizar un componente**: el locator del componente se creó con `page` en lugar de con la raíz, y encuentra el botón de todas las tarjetas. Encadena desde `raiz`.
+- **Pruebas que fallan dentro del Page Object sin decir por qué**: el Page Object hace aserciones o esperas propias. Mueve la verificación a la prueba y deja que el mensaje de `expect` explique el fallo.
+- **El Page Object recibe un `page` distinto al de la prueba**: en TypeScript y JavaScript, créalo siempre con el `page` del fixture de la prueba (o dentro de un fixture), no con uno guardado de otra prueba.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `PageFactory.initElements` + `@FindBy` | Locators asignados en el constructor | Un Locator ya es perezoso: no necesita inicialización, anotaciones ni proxies. |
+| Proxy de `@FindBy`: busca el elemento cada vez que se usa | Locator: busca un elemento actualizado cada vez que se usa | Los dos son perezosos; el Locator además espera a que el elemento sea accionable y es estricto si hay varias coincidencias. |
+| `@CacheLookup` | No existe | Una referencia cacheada puede terminar en `StaleElementReferenceException` si la página vuelve a renderizar; en Playwright no se guardan referencias a elementos. |
+| `IWebElement` guardado en un campo | Evitarlo: guarda Locators | Un elemento encontrado una vez queda obsoleto cuando la página vuelve a renderizar. |
+| `WebDriverWait` dentro del Page Object | Ninguna espera explícita | Las acciones y las aserciones web esperan por sí mismas. |
+| Driver compartido en un campo estático | `page` por prueba (fixture o `PageTest`) | Cada prueba tiene su propio contexto aislado. |

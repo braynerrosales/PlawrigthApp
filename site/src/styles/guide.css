@@ -1,0 +1,341 @@
+/*
+ * Sistema visual «Trace»: neutros grafito, un único acento violeta, código oscuro en ambos temas.
+ * Los componentes usan los tokens `--pg-*` o los de Starlight; nunca colores literales.
+ * Starlight es oscuro en `:root` y claro en `:root[data-theme='light']`.
+ */
+
+:root {
+	--pg-font-display: 'Archivo Variable', 'Arial Narrow', system-ui, sans-serif;
+	--sl-font: 'IBM Plex Sans Variable';
+	--sl-font-mono: 'JetBrains Mono Variable';
+
+	--pg-r-sm: 4px;
+	--pg-r-md: 8px;
+
+	/* Tema oscuro */
+	--pg-bg: #111018;
+	--pg-surface: #18171f;
+	--pg-surface-2: #201f2a;
+	--pg-border: #302e3d;
+	--pg-ok: #5cc98a;
+	--pg-ok-soft: #132a1d;
+	--pg-bad: #ff8a7a;
+	--pg-bad-soft: #2e1714;
+	--pg-warn: #f2b75a;
+	--pg-warn-soft: #2c2210;
+	--pg-info: #7fb0ff;
+	--pg-info-soft: #14213a;
+
+	/* Código: la superficie de mayor contraste en ambos temas. */
+	--pg-code-bg: #0b0a10;
+	--pg-code-head: #15141c;
+	--pg-code-border: #262433;
+	--pg-code-fg: #e6e5ef;
+	--pg-code-muted: #8d8ba0;
+	--pg-code-accent: #a99cff;
+	--pg-code-mark: rgba(169, 156, 255, 0.16);
+
+	--sl-color-white: #ecebf3;
+	--sl-color-gray-1: #dddbe8;
+	--sl-color-gray-2: #c9c7d6;
+	--sl-color-gray-3: #a3a1b5;
+	--sl-color-gray-4: #6e6c80;
+	--sl-color-gray-5: #302e3d;
+	--sl-color-gray-6: #18171f;
+	--sl-color-black: #111018;
+	--sl-color-accent-low: #262245;
+	--sl-color-accent: #8f80ff;
+	--sl-color-accent-high: #bdb3ff;
+
+	--sl-color-bg: var(--pg-bg);
+	--sl-color-bg-nav: var(--pg-surface);
+	--sl-color-bg-sidebar: var(--pg-surface);
+	--sl-color-bg-inline-code: var(--pg-surface-2);
+	--sl-color-hairline: var(--pg-border);
+	--sl-color-hairline-light: var(--pg-border);
+
+	--sl-text-body: 1.0625rem;
+	--sl-line-height: 1.65;
+	--sl-text-h1: 2.5rem;
+	--sl-text-h2: 1.6rem;
+	--sl-text-h3: 1.25rem;
+	--sl-text-h4: 1.1rem;
+	--sl-content-width: 48rem;
+}
+
+:root[data-theme='light'] {
+	--pg-bg: #f6f6f9;
+	--pg-surface: #ffffff;
+	--pg-surface-2: #eeeef4;
+	--pg-border: #dcdbe6;
+	--pg-ok: #1d7a46;
+	--pg-ok-soft: #e5f3ea;
+	--pg-bad: #b42318;
+	--pg-bad-soft: #fcebe9;
+	--pg-warn: #92560a;
+	--pg-warn-soft: #fbf1df;
+	--pg-info: #1f5fbf;
+	--pg-info-soft: #e7effb;
+
+	--pg-code-bg: #16151d;
+	--pg-code-head: #1f1e28;
+	--pg-code-border: #1f1e28;
+
+	--sl-color-white: #17161f;
+	--sl-color-gray-1: #23222e;
+	--sl-color-gray-2: #33323f;
+	--sl-color-gray-3: #5b5a6b;
+	--sl-color-gray-4: #8d8ba0;
+	--sl-color-gray-5: #dcdbe6;
+	--sl-color-gray-6: #eeeef4;
+	--sl-color-gray-7: #f6f6f9;
+	--sl-color-black: #ffffff;
+	--sl-color-accent-low: #ecebfd;
+	--sl-color-accent: #4b3fcf;
+	--sl-color-accent-high: #3a2fb0;
+}
+
+/* Tipografía */
+h1,
+.sl-markdown-content :is(h2, h3, h4) {
+	font-family: var(--pg-font-display);
+	font-stretch: 87.5%;
+	letter-spacing: -0.005em;
+	text-wrap: balance;
+}
+h1 {
+	font-weight: 800;
+}
+.sl-markdown-content :is(h2, h3) {
+	font-weight: 700;
+}
+.sl-markdown-content h2:not(:where(.not-content *)) {
+	margin-top: 3rem;
+}
+.sl-markdown-content :not(pre) > code {
+	padding: 0.1em 0.35em;
+	border-radius: var(--pg-r-sm);
+	font-size: 0.88em;
+}
+:focus-visible {
+	outline-color: var(--sl-color-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+	a,
+	button,
+	select {
+		transition:
+			background-color 0.15s,
+			color 0.15s,
+			border-color 0.15s;
+	}
+}
+
+/* Sidebar: grupos como etiquetas y el módulo actual con el acento. */
+.sidebar-content .top-level > li > details > summary .large {
+	font-size: var(--sl-text-2xs);
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--sl-color-gray-3);
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover {
+	background: var(--sl-color-accent-low);
+	color: var(--sl-color-text-accent);
+	font-weight: 600;
+	box-shadow: inset 2px 0 var(--sl-color-accent);
+}
+
+/* Tabla de contenidos: la sección actual con borde de acento. */
+starlight-toc a[aria-current='true'] {
+	color: var(--sl-color-text-accent);
+	font-weight: 600;
+}
+
+/* Callouts: superficie neutra, borde superior y título con color; nunca solo color (ícono + texto). */
+.starlight-aside {
+	--pg-aside: var(--pg-info);
+	padding: 0.85rem 1rem;
+	border: 1px solid var(--pg-border);
+	border-top: 2px solid var(--pg-aside);
+	border-radius: var(--pg-r-md);
+	background: var(--pg-surface);
+	color: var(--sl-color-gray-2);
+	font-size: var(--sl-text-sm);
+}
+.starlight-aside--tip {
+	--pg-aside: var(--pg-ok);
+}
+.starlight-aside--caution {
+	--pg-aside: var(--pg-warn);
+}
+.starlight-aside--danger {
+	--pg-aside: var(--pg-bad);
+}
+.starlight-aside__title {
+	color: var(--pg-aside);
+	font-size: var(--sl-text-sm);
+}
+.starlight-aside__icon {
+	color: var(--pg-aside);
+}
+
+/* Tablas */
+.sl-markdown-content table {
+	display: block;
+	overflow-x: auto;
+	border-collapse: collapse;
+	font-size: var(--sl-text-sm);
+}
+.sl-markdown-content :is(th, td) {
+	padding: 0.6rem 0.75rem;
+	border: 0;
+	border-bottom: 1px solid var(--pg-border);
+	vertical-align: top;
+}
+.sl-markdown-content th {
+	background: transparent;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-2xs);
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+.sl-markdown-content tr:nth-child(2n) {
+	background: transparent;
+}
+
+/* Selenium → Playwright: lo anterior atenuado, la flecha y lo nuevo destacado. Solo estilo sobre la tabla. */
+.sl-markdown-content .sl-heading-wrapper:has(> #selenium-vs-playwright) + table {
+	border: 1px solid var(--pg-border);
+	border-radius: var(--pg-r-md);
+	background: var(--pg-surface);
+}
+.sl-heading-wrapper:has(> #selenium-vs-playwright) + table td:first-child {
+	color: var(--sl-color-gray-3);
+}
+.sl-heading-wrapper:has(> #selenium-vs-playwright) + table td:first-child code {
+	text-decoration: line-through;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+	background: transparent;
+	color: inherit;
+}
+.sl-heading-wrapper:has(> #selenium-vs-playwright) + table td:nth-child(2) {
+	font-weight: 600;
+	color: var(--sl-color-white);
+}
+.sl-heading-wrapper:has(> #selenium-vs-playwright) + table td:nth-child(2)::before {
+	content: '→ ';
+	color: var(--sl-color-accent);
+	font-weight: 700;
+}
+.sl-heading-wrapper:has(> #selenium-vs-playwright) + table td:nth-child(3) {
+	color: var(--sl-color-gray-3);
+}
+.sl-heading-wrapper:has(> #selenium-vs-playwright) + table tr:last-child td {
+	border-bottom: 0;
+}
+
+/* Evitar / Recomendado: cabecera de color con ícono y etiqueta, cuerpo neutro. */
+.practice {
+	--practice-color: var(--sl-color-gray-3);
+	--practice-soft: var(--pg-surface-2);
+	margin-top: 2rem;
+	border: 1px solid var(--pg-border);
+	border-radius: var(--pg-r-md);
+	background: var(--pg-surface);
+	overflow: hidden;
+}
+.practice--bad {
+	--practice-color: var(--pg-bad);
+	--practice-soft: var(--pg-bad-soft);
+}
+.practice--good {
+	--practice-color: var(--pg-ok);
+	--practice-soft: var(--pg-ok-soft);
+}
+.practice__label {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.25rem 0.5rem;
+	margin: 0;
+	padding: 0.55rem 0.9rem;
+	background: var(--practice-soft);
+	color: var(--practice-color);
+	font-size: var(--sl-text-2xs);
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.practice__title {
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-sm);
+	font-weight: 600;
+	letter-spacing: 0;
+	text-transform: none;
+}
+.practice > .code-example {
+	margin: 0;
+	padding: 0.9rem 0.9rem 0;
+}
+.practice > .code-example language-tabs {
+	margin-top: 0;
+}
+.practice__body {
+	padding: 0.75rem 0.9rem 0.9rem;
+	color: var(--sl-color-gray-2);
+	font-size: var(--sl-text-sm);
+}
+.practice__body:empty {
+	display: none;
+}
+.practice__body > :first-child {
+	margin-top: 0;
+}
+
+/* Nombre de archivo y runner del snippet en la cabecera del bloque. */
+.expressive-code .frame.has-title .header {
+	font-family: var(--__sl-font-mono);
+}
+
+/* Portada */
+.home-routes {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 2rem;
+	margin-top: 2.5rem;
+}
+.home-routes > * {
+	margin-top: 0;
+}
+@media (min-width: 50rem) {
+	.home-routes {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 2.5rem;
+	}
+}
+.home-quick {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-sm);
+}
+.home-quick a {
+	text-decoration: none;
+}
+.home-quick a code {
+	display: inline-block;
+	padding: 0.2rem 0.6rem;
+	border: 1px solid var(--pg-border);
+	border-radius: 999px;
+	background: var(--pg-surface);
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-xs);
+}
+.home-quick a:hover code {
+	border-color: var(--sl-color-accent);
+}

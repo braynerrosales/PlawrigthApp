@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.astro/
+test-results/
+playwright-report/
+bin/
+obj/
+graphify-out/cache/
+.venv/
+__pycache__/
+.pytest_cache/
+target/
+.vs/
+*.user
+.env
+.env.*

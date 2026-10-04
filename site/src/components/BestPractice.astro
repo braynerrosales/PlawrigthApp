@@ -1,0 +1,18 @@
+---
+/** Práctica recomendada. Con `id` muestra el snippet correspondiente en el lenguaje elegido. */
+import CodeExample from './CodeExample.astro';
+
+interface Props {
+	title?: string;
+	id?: string;
+}
+
+const { title, id } = Astro.props;
+const heading = title && title[0]!.toUpperCase() + title.slice(1);
+---
+
+<aside class="practice practice--good" aria-label={`Recomendado${title ? `: ${title}` : ''}`}>
+	<p class="practice__label"><span aria-hidden="true">✓</span> Recomendado{heading && <span class="practice__title">{heading}</span>}</p>
+	{id && <CodeExample id={id} bare />}
+	<div class="practice__body"><slot /></div>
+</aside>

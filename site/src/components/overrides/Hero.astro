@@ -1,0 +1,145 @@
+---
+/**
+ * Hero de la portada: texto y acciones del frontmatter `hero`, datos reales de la guía y,
+ * como imagen, un ejemplo real de Locators (el mismo snippet que se ejecuta en la validación).
+ */
+import CodeExample from '../CodeExample.astro';
+import { getModules } from '../../lib/catalog';
+import { LANGUAGES } from '../../lib/languages';
+
+const { hero } = Astro.locals.starlightRoute.entry.data;
+const modules = await getModules();
+const complete = LANGUAGES.filter((l) => modules.length > 0 && modules.every((m) => m.meta.languages[l.id] === 'complete'));
+const versions = [...new Set(modules.map((m) => m.meta.validatedWith))];
+const completeList = new Intl.ListFormat('es').format(complete.map((l) => l.label));
+---
+
+{
+	hero && (
+		<div class="hero">
+			<div class="hero__text">
+				<p class="hero__eyebrow">
+					Playwright {versions.join(' / ')} · {completeList}
+				</p>
+				<h1 id="_top">{hero.title}</h1>
+				{hero.tagline && <p class="hero__tagline" set:html={hero.tagline} />}
+				<div class="hero__actions">
+					{hero.actions.map((action) => (
+						<a class:list={['pg-btn', { 'pg-btn--primary': action.variant === 'primary' }]} href={action.link}>
+							{action.text}
+							{action.variant === 'primary' && <span aria-hidden="true">→</span>}
+						</a>
+					))}
+				</div>
+				<p class="hero__facts">
+					<span><b>{modules.length}</b> módulos</span>
+					<span><b>{completeList}</b> completos</span>
+					<span>Ejemplos ejecutados con <b>{versions.join(' / ')}</b></span>
+				</p>
+			</div>
+			<div class="hero__code">
+				<CodeExample id="locators/qa-case" bare wrap />
+			</div>
+		</div>
+	)
+}
+
+<style>
+	.hero {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 2rem;
+		align-items: center;
+		padding-block: 1rem 0.5rem;
+	}
+	@media (min-width: 60rem) {
+		.hero {
+			grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+			gap: 2.5rem;
+		}
+	}
+	.hero__eyebrow {
+		margin: 0 0 0.6rem;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-2xs);
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+	h1 {
+		margin: 0;
+		color: var(--sl-color-white);
+		font-size: clamp(2rem, 4.5vw, 2.75rem);
+		line-height: 1.1;
+	}
+	.hero__tagline {
+		margin: 0.9rem 0 0;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-lg);
+		line-height: 1.55;
+	}
+	.hero__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		margin-top: 1.5rem;
+	}
+	.pg-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		min-height: 2.75rem;
+		padding: 0 1.1rem;
+		border: 1px solid var(--pg-border);
+		border-radius: var(--pg-r-md);
+		background: var(--pg-surface);
+		color: var(--sl-color-white);
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.pg-btn:hover {
+		border-color: var(--sl-color-accent);
+	}
+	.pg-btn--primary {
+		border-color: var(--sl-color-accent);
+		background: var(--sl-color-accent);
+		color: var(--sl-color-black);
+	}
+	.pg-btn--primary:hover {
+		background: var(--sl-color-accent-high);
+		border-color: var(--sl-color-accent-high);
+	}
+	.pg-btn:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: 2px;
+	}
+	.hero__facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem 1.25rem;
+		margin: 1.25rem 0 0;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-xs);
+	}
+	.hero__facts b {
+		color: var(--sl-color-white);
+		font-family: var(--__sl-font-mono);
+		font-weight: 600;
+	}
+	.hero__code :global(.code-example) {
+		margin: 0;
+	}
+	.hero__code :global(.lang-tabs) {
+		margin: 0;
+	}
+	.hero__code :global(.expressive-code) {
+		--ec-codeFontSize: 0.78rem;
+	}
+	@media (max-width: 30rem) {
+		.pg-btn {
+			flex: 1 1 100%;
+			justify-content: center;
+		}
+	}
+</style>

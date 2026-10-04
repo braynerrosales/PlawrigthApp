@@ -1,0 +1,163 @@
+---
+/**
+ * Ruta de aprendizaje como pasos numerados en la portada. Cada paso enlaza a su módulo y
+ * muestra ✓ si está completado; los pasos sin módulo se muestran como «próximamente».
+ * - `first={7}`: los primeros N módulos en el orden de la ruta y un link al siguiente.
+ * - `steps={[...]}`: pasos explícitos (por ejemplo, la ruta desde Selenium).
+ */
+import { getModules, type CatalogModule } from '../../lib/catalog';
+
+interface Step {
+	label: string;
+	/** Id del módulo que cubre el paso; sin él, el paso es «próximamente». */
+	module?: string;
+	/** Texto a la derecha; por defecto, el tiempo de lectura del módulo. */
+	note?: string;
+}
+
+interface Props {
+	id: string;
+	title: string;
+	description: string;
+	first?: number;
+	steps?: Step[];
+}
+
+const { id, title, description, first, steps: explicit = [] } = Astro.props;
+const modules = await getModules();
+const byId = new Map(modules.map((m) => [m.id, m]));
+
+const toStep = (m: CatalogModule): Step => ({ label: m.meta.title, module: m.id });
+const steps = (first ? modules.slice(0, first).map(toStep) : explicit).map((step) => {
+	const module = step.module ? byId.get(step.module) : undefined;
+	if (step.module && !module) throw new Error(`RouteSteps "${id}": no existe el módulo "${step.module}".`);
+	return { ...step, href: module?.href, note: step.note ?? (module ? `${module.meta.readingTime} min` : 'próximamente') };
+});
+const rest = first ? modules.slice(first) : [];
+---
+
+<section class="route not-content" aria-labelledby={id}>
+	<h2 id={id}>{title}</h2>
+	<p>{description}</p>
+	<ol>
+		{
+			steps.map((step) =>
+				step.href ? (
+					<li data-progress-module={step.module}>
+						<a href={step.href}>{step.label}</a>
+						<span class="note">{step.note}</span>
+					</li>
+				) : (
+					<li class="soon">
+						<span>{step.label}</span>
+						<span class="note">{step.note}</span>
+					</li>
+				),
+			)
+		}
+	</ol>
+	{
+		rest.length > 0 && (
+			<a class="more" href={rest[0]!.href}>
+				Sigue con {rest[0]!.meta.title} y {rest.length - 1} módulos más <span aria-hidden="true">→</span>
+			</a>
+		)
+	}
+</section>
+
+<script>
+	import { markDone, onProgressChange } from '../../lib/progress';
+
+	document.querySelectorAll<HTMLElement>('.route').forEach((route) => onProgressChange((done) => markDone(route, done)));
+</script>
+
+<style>
+	.route {
+		min-width: 0;
+		padding-top: 1rem;
+		border-top: 2px solid var(--sl-color-white);
+	}
+	h2 {
+		margin: 0;
+		color: var(--sl-color-white);
+		font: 700 1.3rem / 1.2 var(--pg-font-display);
+		font-stretch: 87.5%;
+	}
+	p {
+		margin: 0.3rem 0 0;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-sm);
+	}
+	ol {
+		margin: 0.9rem 0 0;
+		padding: 0;
+		list-style: none;
+		counter-reset: step;
+	}
+	li {
+		counter-increment: step;
+		position: relative;
+		display: grid;
+		grid-template-columns: 1.9rem minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 0.6rem;
+		margin: 0;
+		padding: 0.4rem 0;
+		font-size: var(--sl-text-sm);
+	}
+	li::before {
+		content: counter(step);
+		position: relative;
+		z-index: 1;
+		display: grid;
+		place-items: center;
+		width: 1.6rem;
+		height: 1.6rem;
+		border: 1.5px solid var(--pg-border);
+		border-radius: 50%;
+		background: var(--pg-bg);
+		color: var(--sl-color-gray-3);
+		font: 600 0.75rem / 1 var(--__sl-font-mono);
+	}
+	/* Línea que une los pasos. */
+	li:not(:last-child)::after {
+		content: '';
+		position: absolute;
+		top: 1.75rem;
+		bottom: -0.45rem;
+		left: 0.77rem;
+		width: 1.5px;
+		background: var(--pg-border);
+	}
+	li[data-done='true']::before {
+		content: '✓';
+		border-color: var(--pg-ok);
+		background: var(--pg-ok);
+		color: var(--sl-color-black);
+	}
+	a {
+		color: var(--sl-color-white);
+		text-decoration: none;
+	}
+	a:hover {
+		color: var(--sl-color-text-accent);
+		text-decoration: underline;
+	}
+	.soon {
+		color: var(--sl-color-gray-3);
+	}
+	.soon::before {
+		border-style: dashed;
+	}
+	.note {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-2xs);
+	}
+	.more {
+		display: inline-block;
+		margin-top: 0.6rem;
+		color: var(--sl-color-text-accent);
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+	}
+</style>

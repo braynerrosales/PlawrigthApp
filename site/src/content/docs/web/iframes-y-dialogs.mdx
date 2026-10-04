@@ -1,0 +1,134 @@
+---
+title: Iframes, popups, tabs y dialogs
+description: Operar dentro de un iframe, trabajar con dos pestañas a la vez y responder a confirm y prompt sin que la prueba se cuelgue ni descarte el diálogo sin querer.
+category: web
+level: intermediate
+order: 11
+readingTime: 20
+tags:
+  - iframe
+  - frameLocator
+  - contentFrame
+  - popup
+  - pestañas
+  - waitForEvent
+  - dialog
+  - confirm
+  - prompt
+  - alert
+  - SwitchTo
+  - Timeout exceeded
+prerequisites:
+  - Locators
+  - Browser, Context y Page
+  - Auto-waiting y actionability
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Hay tres situaciones en las que lo que ves en pantalla no está en la página que la prueba está usando: un **iframe** (otro documento incrustado, típico de las pasarelas de pago), una **pestaña nueva** y un **diálogo nativo** del navegador (`alert`, `confirm`, `prompt`). En Selenium las tres se resuelven «cambiando el foco» del driver. En Playwright no hay foco que cambiar: cada una tiene su propio objeto y se usa directamente.
+
+## Qué aprenderás
+
+- Cómo localizar y operar elementos dentro de un iframe con `frameLocator`.
+- Por qué un Locator creado desde `page` nunca encuentra lo que está dentro de un iframe, y cómo se ve en el error.
+- Cómo trabajar con dos pestañas a la vez y volver a la original.
+- Qué hace Playwright con un diálogo si nadie lo atiende, y por qué el handler va **antes** de la acción.
+- Cómo responder a un `prompt` con texto.
+
+### La página de práctica
+
+Un checkout con un total a pagar. El formulario de pago (**Número de tarjeta** y **Pagar**) vive en un iframe titulado «Pago con tarjeta» y muestra «Pago aprobado» dentro del propio iframe. El botón **Ver términos y condiciones** abre los términos en una pestaña nueva. Debajo hay una lista de tareas: **Eliminar** pide confirmación con `confirm('¿Eliminar «…»?')` y solo borra si se acepta; **Renombrar** pide el nombre nuevo con `prompt`.
+
+## Iframes: frameLocator
+
+Un iframe es otro documento dentro de la página. Los Locators creados desde `page` buscan solo en el documento principal; para buscar dentro del iframe primero hay que «entrar» con `frameLocator`, que recibe un selector del elemento `<iframe>` y devuelve un objeto sobre el que se usan los mismos `getByRole`, `getByLabel`, etc.
+
+<CodeExample id="iframes-y-dialogs/iframe" title="Pagar dentro del iframe">
+	<Fragment slot="what">Entra al iframe «Pago con tarjeta», escribe el número de tarjeta, pulsa **Pagar** y comprueba que el iframe muestra «Pago aprobado».</Fragment>
+	<Fragment slot="why">`frameLocator` es perezoso como un Locator: no busca el iframe hasta que se usa, y cada acción dentro de él tiene el mismo auto-waiting que en la página principal. Se identifica el iframe por su `title`, que es lo que anuncia un lector de pantalla, en lugar de por su posición.</Fragment>
+	<Fragment slot="avoids">Evita cambiar de contexto y tener que «volver» después: la página principal sigue disponible en `page` todo el tiempo. Y evita esperar a mano a que cargue el iframe.</Fragment>
+	<Fragment slot="alternative">Si ya tienes un Locator que apunta al `<iframe>` (por ejemplo, `page.getByTitle('Pago con tarjeta')`), `locator.contentFrame()` devuelve el mismo `FrameLocator`. En C# es la propiedad `ContentFrame`. Existe desde la versión 1.43. Para iframes anidados se encadena: `frameLocator(...).frameLocator(...)`.</Fragment>
+</CodeExample>
+
+<BadPractice title="buscar el campo desde la página sin entrar al iframe" id="iframes-y-dialogs/iframe-sin-frame">
+	El campo se ve en pantalla, pero no está en el documento principal. El Locator nunca lo encuentra y la acción termina en timeout (aquí 2 segundos solo para el ejemplo). En el error, el *call log* solo tiene una línea: `waiting for getByLabel('Número de tarjeta')`, sin ningún `locator resolved to …`. Esa ausencia es la pista: el problema no es que el elemento esté oculto o deshabilitado, sino que **no existe donde lo buscas**. Revisa si está en un iframe.
+</BadPractice>
+
+El error real que produce este ejemplo:
+
+```text
+locator.fill: Timeout 2000ms exceeded.
+Call log:
+  - waiting for getByLabel('Número de tarjeta')
+```
+
+Compáralo con el error de [Auto-waiting y actionability](/web/auto-waiting/), donde el Locator sí resolvía al botón y lo que fallaba era una comprobación (`element is not enabled`).
+
+## Pestañas y popups: dos páginas a la vez
+
+En [Browser, Context y Page](/fundamentos/browser-context-page/) viste cómo capturar una ventana nueva y cerrarla. Aquí vamos un paso más allá: las dos pestañas quedan abiertas y la prueba usa ambas, sin «cambiar» a ninguna, porque cada pestaña es su propia `Page`.
+
+<CodeExample id="iframes-y-dialogs/nueva-pestana" title="Leer los términos en otra pestaña y aceptarlos en la original">
+	<Fragment slot="what">Abre los términos en una pestaña nueva, comprueba su título y la versión vigente, marca «Acepto los términos y condiciones» en la página original con la otra pestaña todavía abierta, comprueba que el contexto tiene dos páginas, cierra los términos y verifica que queda una y que la casilla sigue marcada.</Fragment>
+	<Fragment slot="why">La espera del popup empieza **antes** del clic (en C#, `RunAndWaitForPopupAsync` lo hace en una sola llamada; en Java, `page.waitForPopup(() -> ...)`; en Python, el bloque `with page.expect_popup()`). Después, `terminos` y `page` son dos objetos independientes: se puede actuar sobre cualquiera en cualquier orden. `context.pages()` (`Context.Pages` en C#, `context().pages()` en Java, la propiedad `context.pages` en Python) lista las páginas abiertas del contexto.</Fragment>
+	<Fragment slot="avoids">Evita el baile de *handles* de Selenium (guardar el actual, buscar el nuevo, cambiar, volver) y los errores por quedarse «en la pestaña equivocada».</Fragment>
+	<Fragment slot="alternative">El evento `popup` solo captura ventanas abiertas **por esa página**. Para esperar cualquier página nueva del contexto, sin importar quién la abrió, usa `page.context().waitForEvent('page')` en TypeScript y JavaScript, `Context.RunAndWaitForPageAsync` en C#, `page.context().waitForPage(() -> ...)` en Java o `page.context.expect_page()` en Python.</Fragment>
+</CodeExample>
+
+## Diálogos: alert, confirm y prompt
+
+Los diálogos nativos son modales: mientras están abiertos, el JavaScript de la página queda detenido. Playwright los expone con el evento `dialog` y tiene una regla que conviene conocer de memoria:
+
+- **Si no hay ningún listener del evento `dialog`, Playwright descarta todos los diálogos automáticamente.** Un `confirm` descartado devuelve `false`, como si la persona hubiera pulsado «Cancelar».
+- **Si registras un listener, debe aceptar o descartar el diálogo.** Si solo lo observa (por ejemplo, para leer el mensaje) y no llama a `accept` ni a `dismiss`, la acción que lo abrió se queda bloqueada.
+
+<BadPractice title="registrar el handler después del clic" id="iframes-y-dialogs/dialog-tarde">
+	La prueba hace clic en **Eliminar** y después registra el handler que aceptaría el `confirm`. Pero cuando se hizo el clic no había ningún listener, así que Playwright ya descartó el diálogo: `confirm` devolvió `false` y la tarea **no** se eliminó. Este snippet pasa justamente porque comprueba que la tarea sigue ahí. En una prueba real, la aserción «la tarea ya no está» fallaría, y el motivo no aparece en ningún error: el diálogo nunca se ve.
+</BadPractice>
+
+<BestPractice title="registrar el handler antes de la acción y aceptar o descartar siempre" id="iframes-y-dialogs/dialog-confirm">
+	El handler se registra antes del clic, guarda el mensaje y acepta el diálogo. La aserción sobre el mensaje se hace fuera del handler, después de comprobar que la tarea desapareció: si fallara dentro del handler, el diálogo podría quedar sin atender. En TypeScript y JavaScript, `page.once` atiende solo el próximo diálogo; en C#, el handler de `Page.Dialog +=` queda activo hasta que lo quites con `-=`.
+</BestPractice>
+
+<Aside type="caution" title="Un listener que no atiende el diálogo cuelga la prueba">
+Escribir un handler que solo registra `dialog.message` sin llamar a `accept` o `dismiss` (`AcceptAsync` o `DismissAsync` en C#) deja la acción esperando indefinidamente. Si quieres cancelar, llama explícitamente a `dismiss`.
+</Aside>
+
+<CodeExample id="iframes-y-dialogs/dialog-prompt" title="Responder a un prompt">
+	<Fragment slot="what">Registra un handler que acepta el `prompt` con el texto «Revisar reporte final», pulsa **Renombrar** en la tarea «Revisar reporte» y comprueba el nombre nuevo.</Fragment>
+	<Fragment slot="why">`accept` recibe opcionalmente el texto que se escribiría en el `prompt` (`AcceptAsync("...")` en C#); es lo que recibe la página como respuesta. En un `confirm` o un `alert` ese texto no tiene efecto.</Fragment>
+	<Fragment slot="avoids">Evita reemplazar `window.prompt` con JavaScript desde la prueba, que se salta el flujo real de la aplicación.</Fragment>
+	<Fragment slot="alternative">Para probar el caso «Cancelar», llama a `dismiss()` (`DismissAsync()` en C#): el `prompt` devuelve `null` y la tarea conserva su nombre.</Fragment>
+</CodeExample>
+
+## Errores comunes
+
+- **«Timeout … exceeded» con solo `waiting for …` en el call log**: el Locator no encuentra nada. Si el elemento se ve en pantalla, probablemente está dentro de un iframe: usa `frameLocator`.
+- **El popup no se captura**: la espera del evento se creó después del clic. Créala antes de la acción.
+- **La acción esperaba una nueva pestaña, pero no la abrió esta página**: el evento `popup` no la ve. Escucha el evento `page` del contexto.
+- **La confirmación «no hace nada» y no hay error**: no había listener cuando apareció el diálogo y Playwright lo descartó. Registra el handler antes de la acción.
+- **La prueba se queda colgada en un clic que abre un diálogo**: hay un listener que no llama a `accept` ni a `dismiss`.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `SwitchTo().Frame(elemento)` | `frameLocator(selector)` | No se cambia el foco: la página principal sigue disponible y no hace falta `SwitchTo().DefaultContent()`. |
+| `SwitchTo().DefaultContent()` / `SwitchTo().ParentFrame()` | No existe | Basta con volver a usar `page` (o el `FrameLocator` padre). |
+| `WindowHandles` + `SwitchTo().Window(handle)` | Evento `popup` o `page`; cada pestaña es una `Page` | Se usan dos objetos a la vez, sin cambiar entre ellos. |
+| `driver.Close()` sobre la ventana actual | `close()` sobre la `Page` concreta | No depende de qué ventana tenga el foco. |
+| `SwitchTo().Alert().Accept()` / `Dismiss()` | Handler del evento `dialog` + `accept()` / `dismiss()` | El handler va antes de la acción; sin listener, Playwright descarta el diálogo solo. |
+| `SwitchTo().Alert().SendKeys(texto)` + `Accept()` | `dialog.accept(texto)` | Una sola llamada. |
+| `SwitchTo().Alert().Text` | `dialog.message()` | Se lee dentro del handler. |

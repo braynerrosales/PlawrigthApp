@@ -1,0 +1,4 @@
+{
+	"ana": { "clave": "clave-de-prueba", "nombre": "Ana", "rol": "cliente", "token": "token-ficticio-ana" },
+	"admin": { "clave": "clave-de-prueba", "nombre": "Admin", "rol": "admin", "token": "token-ficticio-admin" }
+}

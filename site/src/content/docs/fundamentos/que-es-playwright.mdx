@@ -1,0 +1,142 @@
+---
+title: Qué es Playwright
+description: Qué problema resuelve Playwright, cómo está organizado y en qué se diferencia la librería del test runner.
+category: fundamentos
+level: beginner
+order: 1
+readingTime: 10
+tags:
+  - introducción
+  - arquitectura
+  - Playwright Core
+  - Playwright Test
+  - Chromium
+  - Firefox
+  - WebKit
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Playwright es una herramienta de Microsoft para **automatizar navegadores**: abrir páginas, interactuar con ellas como lo haría una persona y comprobar lo que muestran. Se usa sobre todo para pruebas end-to-end (E2E) de aplicaciones web, pero también sirve para pruebas de API y para cualquier tarea que necesite un navegador real.
+
+## Qué aprenderás
+
+- Qué problemas de la automatización tradicional resuelve Playwright.
+- Cómo se relacionan Browser, BrowserContext, Page y Locator.
+- La diferencia entre la librería (Playwright Core) y el test runner (Playwright Test), y qué existe en cada lenguaje.
+- Qué navegadores soporta y qué significa realmente probar en WebKit.
+- Cuándo Playwright es una buena elección y cuándo no.
+
+## Qué problema resuelve
+
+Las pruebas de UI tienen mala fama por ser lentas e inestables. Casi siempre por las mismas causas: la prueba actúa antes de que la página esté lista, depende de selectores que se rompen con cualquier cambio de diseño o comparte estado con otras pruebas. Playwright ataca esas causas desde el diseño de la herramienta:
+
+- **Auto-waiting.** Antes de hacer clic o escribir, espera a que el elemento esté visible, estable y habilitado. No hacen falta esperas fijas.
+- **Locators.** Describen cómo encontrar un elemento y se vuelven a resolver en cada uso, por eso no quedan obsoletos cuando la página se vuelve a renderizar.
+- **Aserciones web-first.** `expect(...)` reintenta hasta que la condición se cumple o vence el tiempo límite.
+- **Aislamiento barato.** Cada prueba puede tener su propio BrowserContext, que es como un perfil de navegador nuevo y se crea en milisegundos.
+- **Herramientas de diagnóstico.** Codegen, Inspector y Trace Viewer para entender qué pasó cuando una prueba falla.
+
+## Arquitectura: Browser → Context → Page → Locator
+
+```text
+Browser            un proceso de Chromium, Firefox o WebKit
+ └─ BrowserContext una sesión aislada: cookies, storage y permisos propios
+     └─ Page       una pestaña o ventana dentro de esa sesión
+         └─ Locator una descripción de cómo encontrar elementos en la página
+```
+
+Cada nivel se crea a partir del anterior. Abrir un navegador es caro, así que normalmente se abre uno y se crean muchos contextos sobre él: uno por prueba. El módulo [Browser, Context y Page](/fundamentos/browser-context-page/) lo explica en detalle.
+
+## Playwright Core vs Playwright Test
+
+Esta es la distinción más importante para no confundirse al leer documentación o ejemplos de otros lenguajes.
+
+- **Playwright Core** es la librería: lanzar navegadores, crear contextos y páginas, locators, acciones, red, API. Existe en todos los lenguajes.
+- **Playwright Test** es el test runner de Node.js (`@playwright/test`): fixtures, configuración con `playwright.config.ts`, projects, paralelismo, reintentos, sharding, reportes y UI Mode. **Solo existe para TypeScript y JavaScript.**
+
+En los demás lenguajes, la librería se combina con el test runner propio del ecosistema:
+
+| Lenguaje | Librería | Integración con test runner |
+|---|---|---|
+| TypeScript / JavaScript | `playwright` | `@playwright/test` (Playwright Test) |
+| C# | `Microsoft.Playwright` | Clases base para NUnit, MSTest y xUnit (`PageTest`, `ContextTest`, `BrowserTest`) |
+| Python | `playwright` | Plugin `pytest-playwright` |
+| Java | `com.microsoft.playwright` | JUnit (la integración `@UsePlaywright` es experimental) |
+
+<CodeExample id="que-es-playwright/core" title="Playwright Core: tú controlas todo el ciclo de vida">
+	<Fragment slot="what">Lanza Chromium, crea un contexto y una página, navega a playwright.dev, imprime el título y cierra el navegador. No usa ningún test runner.</Fragment>
+	<Fragment slot="why">Muestra la jerarquía completa de forma explícita: cada objeto se crea a partir del anterior y el navegador se cierra al final (`await using` en C#, `browser.close()` en TypeScript, JavaScript y Python). En Python, `sync_playwright()` se usa con `with` para que el driver se cierre al terminar; en Java, `Playwright.create()` va en un `try` con recursos por el mismo motivo.</Fragment>
+	<Fragment slot="avoids">Evita pensar que Playwright solo sirve dentro de un test runner. La librería se puede usar en scripts, herramientas internas o en cualquier framework de pruebas.</Fragment>
+	<Fragment slot="alternative">Para pruebas, lo habitual es dejar que el test runner cree y cierre esos objetos, como en el siguiente ejemplo.</Fragment>
+</CodeExample>
+
+<CodeExample id="que-es-playwright/test-runner" title="Con test runner: la página llega lista">
+	<Fragment slot="what">La misma navegación, pero dentro de una prueba. En TypeScript y JavaScript, Playwright Test entrega `page` como fixture; en C#, la clase base `PageTest` expone `Page` y `Expect`; en Python, el plugin `pytest-playwright` entrega el fixture `page`; en Java, la anotación experimental `@UsePlaywright` de JUnit entrega `Page` como parámetro del método.</Fragment>
+	<Fragment slot="why">El runner crea un contexto nuevo para cada prueba y lo cierra al terminar. La prueba solo contiene lo que quiere comprobar.</Fragment>
+	<Fragment slot="avoids">Evita repetir la creación y el cierre del navegador en cada prueba y olvidar cerrarlo cuando una prueba falla a mitad de camino.</Fragment>
+</CodeExample>
+
+<Aside title="Lo que verás en otros módulos">
+Cuando un tema dependa de Playwright Test (UI Mode, projects, sharding, `toHaveScreenshot`, `expect.soft`), el módulo lo indicará y explicará la alternativa real en cada lenguaje. No asumas que una opción de `playwright.config.ts` existe en C#, Java o Python.
+</Aside>
+
+## Navegadores
+
+Playwright descarga y controla sus propias versiones de tres motores:
+
+- **Chromium**: el motor de Chrome y Edge. También puede usar Chrome o Edge instalados mediante *channels*.
+- **Firefox**: una versión de Firefox preparada para Playwright.
+- **WebKit**: el motor de Safari.
+
+<Aside type="caution" title="WebKit no es Safari">
+Probar en WebKit detecta la mayoría de las diferencias de motor, pero no equivale a ejecutar Safari real en todos los escenarios: el navegador de Apple añade su propia integración con el sistema operativo. Si Safari es crítico para tu producto, complementa con pruebas en dispositivos reales.
+</Aside>
+
+## Casos de uso
+
+| Encaja bien | No es la herramienta adecuada |
+|---|---|
+| Pruebas E2E de aplicaciones web | Pruebas unitarias de funciones o clases |
+| Pruebas de API con `APIRequestContext`, solas o combinadas con UI | Apps móviles nativas (Playwright emula navegadores móviles, no apps) |
+| Flujos que necesitan varias sesiones a la vez (admin y cliente) | Pruebas de carga o rendimiento con miles de usuarios |
+| Mockear respuestas del backend para probar errores | Aplicaciones de escritorio que no son web |
+| Migrar suites de Selenium con problemas de estabilidad | |
+
+<BestPractice title="probar lo que ve la persona usuaria">
+	Usa Playwright para comprobar flujos completos tal como los vive una persona: iniciar sesión, buscar, comprar. Prepara los datos por API cuando no sean parte de lo que pruebas.
+</BestPractice>
+
+<BadPractice title="usar E2E para todo">
+	Comprobar cada regla de negocio a través de la interfaz produce suites lentas y frágiles. Las validaciones de cálculo o de reglas internas suelen probarse mejor con pruebas unitarias o de API, y dejar en E2E los flujos que importan a la persona usuaria.
+</BadPractice>
+
+## Errores comunes
+
+- **Copiar opciones de `playwright.config.ts` a un proyecto de C#.** Ese archivo es de Playwright Test; en .NET la configuración va en `.runsettings` o en el código.
+- **Creer que Playwright necesita WebDriver.** Se comunica directamente con cada navegador; no hay drivers que descargar ni versionar.
+- **Usar esperas fijas por costumbre.** Con auto-waiting y aserciones web-first, un `Thread.Sleep` o `waitForTimeout` casi siempre sobra.
+
+## Selenium vs Playwright
+
+| Concepto | Selenium | Playwright |
+|---|---|---|
+| Comunicación con el navegador | WebDriver (y WebDriver BiDi) | Protocolo propio con cada motor, sin drivers aparte |
+| Esperas | Implícitas o explícitas con `WebDriverWait` | Auto-waiting en acciones y aserciones |
+| Elementos | `WebElement`, que puede quedar *stale* | `Locator`, que se resuelve en cada uso |
+| Sesiones aisladas | Un driver o perfil por sesión | Un BrowserContext por sesión, en el mismo navegador |
+| Interceptar red | Posible en Selenium 4, más limitado y dependiente del navegador | Integrado: `route`, `fulfill`, `abort` |
+| Escalar ejecución | Selenium Grid | Workers y sharding del runner, o servicios remotos; no hay Grid |
+
+La ruta [Selenium → Playwright](/selenium/) profundiza en el cambio de modelo mental.

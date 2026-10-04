@@ -1,0 +1,35 @@
+---
+/** En un módulo: ruta y número sobre el título, y ModuleHeader debajo. */
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import ModuleHeader from '../ModuleHeader.astro';
+import { categoryName } from '../../lib/catalog';
+import { getModule } from '../../lib/modules';
+
+const { entry } = Astro.locals.starlightRoute;
+const module = getModule(entry.data);
+---
+
+{
+	module && (
+		<p class="crumbs">
+			<a href={`/${module.category}/`}>{categoryName(module.category)}</a> / Módulo {module.order}
+		</p>
+	)
+}
+<Default />
+{module && <ModuleHeader module={module} id={entry.id} body={entry.body} />}
+
+<style>
+	.crumbs {
+		margin: 0 0 0.35rem;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.crumbs a {
+		color: inherit;
+		text-decoration: none;
+	}
+	.crumbs a:hover {
+		color: var(--sl-color-text-accent);
+	}
+</style>

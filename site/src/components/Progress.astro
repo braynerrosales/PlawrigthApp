@@ -1,0 +1,243 @@
+---
+/**
+ * Progreso local (localStorage, sin backend).
+ * - `<Progress module="web/locators" />`: botón para marcar un módulo como completado.
+ * - `<Progress overview />`: progreso global y una celda por ruta de aprendizaje, con link a cada una.
+ * - `<Progress category="web" />`: barra compacta de una ruta (pie de la tabla de contenidos).
+ */
+import { CATEGORIES, type CategoryId } from '../lib/categories';
+import { categoryName, getModules } from '../lib/catalog';
+
+type Props =
+	| { module: string; overview?: never; category?: never }
+	| { overview: true; module?: never; category?: never }
+	| { category: CategoryId; module?: never; overview?: never };
+
+const { module: moduleId, overview, category } = Astro.props;
+
+const modules = moduleId ? [] : await getModules();
+const idsOf = (id: CategoryId) => modules.filter((m) => m.meta.category === id).map((m) => m.id);
+// Las rutas numeradas son las de aprendizaje; Casos prácticos y Referencia solo aparecen con contenido.
+const routes = CATEGORIES.filter((c) => /^\d+\./.test(c.label) || idsOf(c.id).length > 0).map((c) => ({
+	id: c.id,
+	label: categoryName(c.id),
+	ids: idsOf(c.id),
+}));
+const total = modules.length;
+---
+
+<guide-progress class="guide-progress not-content" data-pagefind-ignore>
+	{
+		moduleId && (
+			<button type="button" class="pg-toggle" data-module={moduleId} aria-pressed="false">
+				<span class="when-off">Marcar como completado</span>
+				<span class="when-on">
+					<span aria-hidden="true">✓</span> Completado
+				</span>
+			</button>
+		)
+	}
+	{
+		overview && (
+			<div class="pg-overview">
+				<p class="pg-overview__total" data-ids={modules.map((m) => m.id).join(',')}>
+					Tu progreso: <b data-count>0</b> de {total} módulos. Se guarda solo en este navegador.
+				</p>
+				<ul class="pg-cats">
+					{routes.map((route) => (
+						<li>
+							<a href={`/${route.id}/`}>
+								<b>{route.label}</b>
+								{route.ids.length > 0 ? (
+									<span data-ids={route.ids.join(',')}>
+										{route.ids.length} {route.ids.length === 1 ? 'módulo' : 'módulos'}
+										<span data-count-text />
+									</span>
+								) : (
+									<span>Próximamente</span>
+								)}
+								{route.ids.length > 0 && (
+									<progress max={route.ids.length} value="0" aria-label={`Progreso en ${route.label}`} data-ids={route.ids.join(',')} />
+								)}
+							</a>
+						</li>
+					))}
+				</ul>
+			</div>
+		)
+	}
+	{
+		category && (
+			<div class="pg-compact" data-ids={idsOf(category).join(',')}>
+				<p class="pg-compact__label">Tu progreso</p>
+				<span>
+					{categoryName(category)} · <b data-count>0</b>/{idsOf(category).length}
+				</span>
+				<progress max={idsOf(category).length} value="0" aria-label={`Progreso en ${categoryName(category)}`} data-ids={idsOf(category).join(',')} />
+			</div>
+		)
+	}
+</guide-progress>
+
+<script>
+	import { onProgressChange, toggleModule } from '../lib/progress';
+
+	class GuideProgress extends HTMLElement {
+		connectedCallback() {
+			this.querySelector<HTMLButtonElement>('[data-module]')?.addEventListener('click', (event) => {
+				toggleModule((event.currentTarget as HTMLElement).dataset.module!);
+			});
+			onProgressChange((done) => this.render(done));
+		}
+
+		render(done: Set<string>) {
+			const toggle = this.querySelector<HTMLButtonElement>('[data-module]');
+			if (toggle) toggle.setAttribute('aria-pressed', String(done.has(toggle.dataset.module!)));
+			for (const el of this.querySelectorAll<HTMLElement>('[data-ids]')) {
+				const ids = el.dataset.ids!.split(',').filter(Boolean);
+				const completed = ids.filter((id) => done.has(id)).length;
+				if (el instanceof HTMLProgressElement) el.value = completed;
+				const count = el.querySelector('[data-count]');
+				if (count) count.textContent = String(completed);
+				const text = el.querySelector('[data-count-text]');
+				if (text) text.textContent = completed ? ` · ${completed} completados` : '';
+			}
+		}
+	}
+
+	customElements.define('guide-progress', GuideProgress);
+</script>
+
+<style>
+	.guide-progress {
+		display: block;
+	}
+	.pg-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		min-height: 2.5rem;
+		padding: 0 1rem;
+		border: 1px solid var(--pg-border);
+		border-radius: var(--pg-r-md);
+		background: var(--pg-surface);
+		color: var(--sl-color-white);
+		font: 600 var(--sl-text-sm) / 1 var(--__sl-font);
+		cursor: pointer;
+	}
+	.pg-toggle:hover {
+		border-color: var(--sl-color-accent);
+	}
+	.pg-toggle[aria-pressed='true'] {
+		border-color: var(--pg-ok);
+		background: var(--pg-ok-soft);
+		color: var(--pg-ok);
+	}
+	.pg-toggle:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: 2px;
+	}
+	[aria-pressed='false'] .when-on,
+	[aria-pressed='true'] .when-off {
+		display: none;
+	}
+	@media (max-width: 49.99rem) {
+		.pg-toggle {
+			width: 100%;
+			min-height: 2.75rem;
+		}
+	}
+
+	.pg-overview__total {
+		margin: 0 0 0.75rem;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-sm);
+	}
+	.pg-overview__total b {
+		color: var(--sl-color-white);
+		font-variant-numeric: tabular-nums;
+	}
+	.pg-cats {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		border: 1px solid var(--pg-border);
+		border-radius: var(--pg-r-md);
+		background: var(--pg-surface);
+		overflow: hidden;
+	}
+	/* Bordes internos de la grilla sin depender del número de columnas. */
+	.pg-cats li {
+		margin: 0 -1px -1px 0;
+		border-right: 1px solid var(--pg-border);
+		border-bottom: 1px solid var(--pg-border);
+		min-width: 0;
+	}
+	.pg-cats a {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		height: 100%;
+		padding: 0.9rem 1rem;
+		color: inherit;
+		text-decoration: none;
+	}
+	.pg-cats a:hover {
+		background: var(--pg-surface-2);
+	}
+	.pg-cats a:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: -2px;
+	}
+	.pg-cats b {
+		color: var(--sl-color-white);
+		font-size: var(--sl-text-sm);
+	}
+	.pg-cats span {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-xs);
+	}
+
+	.pg-compact {
+		margin-top: 1.5rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--pg-border);
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.pg-compact__label {
+		margin: 0 0 0.4rem;
+		font-size: var(--sl-text-2xs);
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.pg-compact b {
+		color: var(--sl-color-white);
+		font-variant-numeric: tabular-nums;
+	}
+
+	progress {
+		appearance: none;
+		display: block;
+		width: 100%;
+		height: 4px;
+		margin-top: 0.55rem;
+		border: 0;
+		border-radius: 2px;
+		background: var(--pg-surface-2);
+		overflow: hidden;
+	}
+	progress::-webkit-progress-bar {
+		background: var(--pg-surface-2);
+	}
+	progress::-webkit-progress-value {
+		background: var(--sl-color-accent);
+	}
+	progress::-moz-progress-bar {
+		background: var(--sl-color-accent);
+	}
+</style>

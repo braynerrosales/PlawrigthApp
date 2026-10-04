@@ -1,0 +1,78 @@
+---
+/**
+ * Selector del lenguaje de los ejemplos junto al selector de tema. Cambia todas las
+ * LanguageTabs de la página y se recuerda en localStorage, igual que elegir una tab.
+ */
+import Default from '@astrojs/starlight/components/ThemeSelect.astro';
+import { LANGUAGES } from '../../lib/languages';
+---
+
+<pg-language-select>
+	<label>
+		<span class="sr-only">Lenguaje de los ejemplos</span>
+		<select>
+			{LANGUAGES.map((lang) => <option value={lang.id}>{lang.label}</option>)}
+		</select>
+	</label>
+</pg-language-select>
+<Default />
+
+<script>
+	import {
+		DEFAULT_LANGUAGE,
+		LANGUAGE_CHANGE_EVENT,
+		LANGUAGE_IDS,
+		LANGUAGE_STORAGE_KEY,
+		type LanguageId,
+	} from '../../lib/languages';
+
+	function stored(): LanguageId {
+		try {
+			const value = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+			return LANGUAGE_IDS.includes(value as LanguageId) ? (value as LanguageId) : DEFAULT_LANGUAGE;
+		} catch {
+			return DEFAULT_LANGUAGE;
+		}
+	}
+
+	class LanguageSelect extends HTMLElement {
+		connectedCallback() {
+			const select = this.querySelector('select')!;
+			select.value = stored();
+			select.addEventListener('change', () => {
+				try {
+					localStorage.setItem(LANGUAGE_STORAGE_KEY, select.value);
+				} catch {}
+				document.dispatchEvent(new CustomEvent(LANGUAGE_CHANGE_EVENT, { detail: select.value }));
+			});
+			document.addEventListener(LANGUAGE_CHANGE_EVENT, (event) => {
+				select.value = (event as CustomEvent<LanguageId>).detail;
+			});
+		}
+	}
+
+	customElements.define('pg-language-select', LanguageSelect);
+</script>
+
+<style>
+	pg-language-select {
+		display: inline-flex;
+	}
+	select {
+		height: 2rem;
+		padding: 0 1.6rem 0 0.65rem;
+		border: 1px solid var(--pg-border);
+		border-radius: 999px;
+		background: var(--pg-surface)
+			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238d8ba0' stroke-width='1.5'/%3E%3C/svg%3E")
+			no-repeat right 0.6rem center;
+		color: var(--sl-color-white);
+		font: 600 var(--sl-text-xs) / 1 var(--__sl-font);
+		appearance: none;
+		cursor: pointer;
+	}
+	select:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: 2px;
+	}
+</style>

@@ -1,0 +1,113 @@
+---
+title: Upload y download
+description: Subir archivos desde el disco o desde memoria, manejar el selector de archivos de un botón propio y comprobar el contenido de una descarga.
+category: web
+level: intermediate
+order: 12
+readingTime: 15
+tags:
+  - upload
+  - download
+  - subir archivos
+  - descargas
+  - setInputFiles
+  - FilePayload
+  - filechooser
+  - RunAndWaitForFileChooserAsync
+  - waitForEvent
+  - RunAndWaitForDownloadAsync
+  - suggestedFilename
+  - saveAs
+  - CSV
+  - Node is not an HTMLInputElement
+  - while waiting for event "download"
+prerequisites:
+  - Acciones e interacciones
+  - Auto-waiting y actionability
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Subir una factura, cambiar la foto de perfil o exportar un reporte son funciones que casi toda app tiene y que muchas suites dejan sin probar porque «abren una ventana del sistema». Playwright no necesita esa ventana: le entrega los archivos directamente al `<input type="file">` y captura las descargas como objetos que la prueba puede leer.
+
+## Qué aprenderás
+
+- Cómo subir archivos desde el disco con una ruta que funciona en cualquier máquina.
+- Cómo subir archivos creados en memoria y cómo quitar la selección.
+- Qué hacer cuando la app usa un botón propio que abre el selector de archivos.
+- Por qué hay que empezar a esperar una descarga **antes** del clic, y cómo comprobar su contenido.
+
+### La página de práctica
+
+Los ejemplos se ejecutan contra una página con un campo **Adjuntos** (`<input type="file" multiple>`) que lista el nombre y el tamaño de cada archivo elegido, un botón **Subir foto** que abre un input de archivos oculto y un botón **Exportar CSV** que genera un archivo `pedidos.csv` en el navegador y lo descarga.
+
+## Subir archivos: setInputFiles
+
+<CodeExample id="upload-y-download/upload-archivo" title="Subir un archivo desde el disco">
+	<Fragment slot="what">Elige `factura.txt` en el campo **Adjuntos** y comprueba que la app lo lista con su tamaño.</Fragment>
+	<Fragment slot="why">`setInputFiles` asigna los archivos al input igual que si la persona los hubiera elegido, y la app recibe su evento `change`. La ruta se construye a partir de la ubicación de la prueba (TypeScript y JavaScript con `import.meta.dirname`, Python con `__file__`) o de la carpeta de salida (C#), así que no depende de desde dónde se ejecute. En Java la ruta es relativa a la carpeta del proyecto, que es desde donde Maven ejecuta las pruebas.</Fragment>
+	<Fragment slot="avoids">Evita rutas relativas sueltas como `'factura.txt'`: Playwright las resuelve desde el directorio de trabajo actual, que cambia entre tu terminal, el IDE y CI.</Fragment>
+	<Fragment slot="alternative">Para varios archivos de disco, pasa un arreglo de rutas.</Fragment>
+</CodeExample>
+
+<CodeExample id="upload-y-download/upload-memoria" title="Archivos creados en memoria">
+	<Fragment slot="what">Sube `notas.txt` y `datos.csv` creados en la propia prueba, comprueba que se listan con su tamaño, y luego quita la selección con un arreglo vacío.</Fragment>
+	<Fragment slot="why">Un archivo en memoria se describe con nombre, tipo MIME y contenido (`{ name, mimeType, buffer }` en TypeScript y JavaScript, `FilePayload` en C# y en Java, un diccionario con `name`, `mimeType` y `buffer` en bytes en Python). El dato de prueba vive junto a la prueba y no hace falta mantener archivos en el repositorio.</Fragment>
+	<Fragment slot="avoids">Evita depender de archivos que alguien puede borrar o modificar, y evita dejar el input con archivos de un paso anterior: un arreglo vacío lo deja limpio.</Fragment>
+</CodeExample>
+
+## Botones propios: el selector de archivos
+
+Muchas apps ocultan el `<input type="file">` y muestran un botón con su propio estilo que lo abre por código. Al hacer clic, el navegador abriría el selector de archivos del sistema; Playwright lo intercepta y lo entrega a la prueba.
+
+<CodeExample id="upload-y-download/file-chooser" title="Subir una foto con un botón personalizado">
+	<Fragment slot="what">Hace clic en **Subir foto**, captura el selector de archivos que ese clic abre, le entrega `perfil.png` y comprueba que la app muestra el nombre.</Fragment>
+	<Fragment slot="why">La prueba recorre el mismo camino que la persona: el botón visible. En TypeScript y JavaScript se empieza a esperar el evento `filechooser` antes del clic; en C#, `RunAndWaitForFileChooserAsync` ejecuta el clic y espera el selector en una sola llamada, igual que `waitForFileChooser(() -> ...)` en Java; en Python, el clic va dentro de `with page.expect_file_chooser()`.</Fragment>
+	<Fragment slot="avoids">Evita creer que el botón funciona porque el input oculto acepta archivos: si el botón deja de abrir el selector, esta prueba falla.</Fragment>
+	<Fragment slot="alternative">`setInputFiles` también funciona directamente sobre el input oculto (aquí, `getByLabel('Foto de perfil')`), sin pasar por el botón. Es más corto, pero no prueba el botón. Si lo usas sobre el botón en lugar del input, falla con «Node is not an HTMLInputElement».</Fragment>
+</CodeExample>
+
+## Descargas
+
+Una descarga es un evento: ocurre una vez, en el momento en que la página la inicia. Para capturarla, la prueba tiene que estar escuchando **antes** de la acción que la provoca.
+
+<BadPractice title="hacer clic y después esperar la descarga" id="upload-y-download/descarga-tarde">
+	El clic inicia la descarga y la espera empieza recién después: el evento ya pasó y la espera vence con «Timeout 2000ms exceeded while waiting for event "download"». El timeout corto es solo para el ejemplo. En otra máquina, el evento puede llegar un poco más tarde y la prueba pasar: es una prueba inestable, que depende de una carrera.
+</BadPractice>
+
+<BestPractice title="empezar a esperar antes del clic" id="upload-y-download/descarga">
+	En TypeScript y JavaScript se crea la promesa de `waitForEvent('download')` sin `await`, se hace el clic y después se espera la promesa; en C#, `RunAndWaitForDownloadAsync` hace las tres cosas, igual que `waitForDownload(() -> ...)` en Java; en Python, el clic va dentro de `with page.expect_download()` y la descarga queda en `.value`. La prueba comprueba el nombre sugerido (`suggestedFilename`, que el navegador toma del atributo `download` o de la cabecera `Content-Disposition`), lee el archivo con `path()` (`PathAsync()` en C#), que espera a que termine la descarga, y verifica la cabecera del CSV.
+</BestPractice>
+
+<Aside type="note" title="¿Dónde queda el archivo?">
+Playwright guarda las descargas en una carpeta temporal y **las borra al cerrar el contexto del navegador** que las produjo. Si necesitas conservar el archivo (por ejemplo, como evidencia del reporte), cópialo con `saveAs(ruta)` (`SaveAsAsync` en C#) antes de que termine la prueba.
+</Aside>
+
+## Errores comunes
+
+- **«Timeout … exceeded while waiting for event "download"»**: la espera empezó después del clic, o el clic no inicia una descarga (abre el archivo en una pestaña, por ejemplo). Empieza a esperar antes de la acción.
+- **«Node is not an HTMLInputElement»**: `setInputFiles` apunta al botón y no al `<input type="file">`. Localiza el input o usa el selector de archivos.
+- **El archivo no se encuentra en CI**: la ruta es relativa al directorio de trabajo. Constrúyela desde la ubicación de la prueba o de la carpeta de salida.
+- **El archivo descargado ya no existe al revisarlo**: el contexto se cerró y Playwright lo borró. Usa `saveAs` para conservarlo.
+- **La espera del selector de archivos vence**: el clic no abre el selector (el botón no está conectado al input). Es un error real de la app.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `SendKeys(ruta)` en el `input type="file"` | `setInputFiles(ruta)` | También acepta varios archivos, archivos en memoria y un arreglo vacío para limpiar. |
+| Hacer visible el input oculto con JavaScript para poder usar `SendKeys` | `setInputFiles` sobre el input oculto, o el selector de archivos del botón | No hace falta modificar la página. |
+| Sin equivalente para el diálogo del sistema | Evento `filechooser` / `RunAndWaitForFileChooserAsync` | El selector se intercepta y se completa desde la prueba. |
+| Configurar el directorio de descargas del navegador y esperar a que aparezca el archivo | `waitForEvent('download')` / `RunAndWaitForDownloadAsync` | La descarga es un objeto con nombre sugerido, ruta y `saveAs`. |
+| Leer el archivo descargado del disco y borrarlo a mano | `path()` / `PathAsync()` | Playwright borra los archivos al cerrar el contexto. |

@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  Página de práctica del módulo Upload y download: un selector de archivos visible que lista
+  lo elegido, un botón "Subir foto" que abre un input oculto y un botón que descarga un CSV
+  generado en el navegador.
+-->
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Archivos del pedido</title>
+		<style>
+			ul { min-height: 24px; }
+		</style>
+	</head>
+	<body>
+		<h1>Archivos del pedido</h1>
+		<section>
+			<label for="adjuntos">Adjuntos</label>
+			<input id="adjuntos" type="file" multiple />
+			<ul aria-label="Archivos seleccionados"></ul>
+		</section>
+
+		<section>
+			<h2>Perfil</h2>
+			<!-- Botón personalizado: el input real está oculto y se abre con JavaScript. -->
+			<button type="button" id="subir-foto">Subir foto</button>
+			<input id="foto" type="file" accept="image/*" aria-label="Foto de perfil" hidden />
+			<p id="foto-nombre"></p>
+		</section>
+
+		<section>
+			<h2>Pedidos</h2>
+			<button type="button" id="exportar">Exportar CSV</button>
+		</section>
+
+		<script>
+			const field = (id) => document.getElementById(id);
+
+			field('adjuntos').addEventListener('change', (event) => {
+				document.querySelector('[aria-label="Archivos seleccionados"]').innerHTML = [...event.target.files]
+					.map((file) => `<li>${file.name} (${file.size} bytes)</li>`)
+					.join('');
+			});
+
+			field('subir-foto').addEventListener('click', () => field('foto').click());
+			field('foto').addEventListener('change', (event) => {
+				const [file] = event.target.files;
+				field('foto-nombre').textContent = file ? `Foto: ${file.name}` : '';
+			});
+
+			// Descarga generada en el navegador, como hacen muchas apps al exportar una tabla.
+			field('exportar').addEventListener('click', () => {
+				const csv = 'id,cliente,total\n1,Ana Pérez,120.00\n2,Luis Gómez,80.50\n';
+				const link = document.createElement('a');
+				link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+				link.download = 'pedidos.csv';
+				link.click();
+			});
+		</script>
+	</body>
+</html>

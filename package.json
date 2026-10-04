@@ -1,0 +1,24 @@
+{
+  "name": "playwright-guide",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "site"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w site",
+    "build": "npm run build -w site",
+    "preview": "npm run preview -w site",
+    "check": "npm run check -w site",
+    "snippets:ts": "tsc -p snippets && playwright test -c snippets",
+    "snippets:dotnet": "dotnet test snippets/dotnet",
+    "snippets:python": "python -m pytest -c snippets/python/pytest.ini snippets/python",
+    "snippets:java": "node -e \"const { resolve } = require('node:path'); const mvnw = resolve('snippets/java', process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw'); require('node:child_process').execSync(`\\\"${mvnw}\\\" test`, { cwd: 'snippets/java', stdio: 'inherit' })\""
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24.19.1",
+    "playwright": "^1.63.0",
+    "typescript": "^5.9.0"
+  }
+}

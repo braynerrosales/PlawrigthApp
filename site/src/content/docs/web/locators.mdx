@@ -1,0 +1,285 @@
+---
+title: Locators
+description: Cómo identificar elementos de forma resistente para que tus pruebas sobrevivan a los cambios de diseño de la aplicación.
+category: web
+level: beginner
+order: 4
+readingTime: 25
+tags:
+  - locators
+  - getByRole
+  - getByText
+  - getByLabel
+  - getByPlaceholder
+  - getByTestId
+  - css
+  - xpath
+  - filter
+  - nth
+  - strictness
+  - strict mode violation
+prerequisites:
+  - Instalación y primer test
+  - Browser, Context y Page
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-03
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Casi todas las pruebas de UI que fallan sin que haya un bug real fallan por lo mismo: un selector que dependía de algo que cambió. Este módulo enseña a elegir locators que describen **lo que ve y usa una persona**, no cómo está armado el HTML por dentro.
+
+## Qué aprenderás
+
+- Qué es un Locator y por qué no es lo mismo que un elemento.
+- En qué orden elegir `getByRole`, `getByText`, `getByLabel`, `getByPlaceholder` y `getByTestId`.
+- Cuándo CSS y XPath son aceptables y cuándo son una deuda.
+- Cómo acotar resultados con `filter`, encadenamiento, `first`, `last` y `nth`.
+- Qué es *strictness* y cómo resolver un `strict mode violation` sin taparlo.
+
+<Aside title="Playwright Core vs Playwright Test">
+Los **Locators** son parte de la librería de Playwright y existen en todos los bindings (C#, TypeScript, JavaScript, Java y Python), aunque la sintaxis cambia: en C# `First` y `Last` son propiedades y las opciones se pasan con `new() { ... }`; en Python los métodos usan snake_case (`get_by_role`), las opciones son argumentos con nombre (`name=...`) y `first` y `last` también son propiedades; en Java las opciones son objetos con setters (`new Page.GetByRoleOptions().setName(...)`) y `first()` y `last()` son métodos.
+
+Las **aserciones web-first** (`expect(...).toHaveText`) son otra pieza: en TypeScript y JavaScript vienen de `@playwright/test`; en C# las ofrece `Expect(...)` de `Microsoft.Playwright`, disponible directamente en las clases base `PageTest` de NUnit y MSTest; en Python, `expect` se importa de `playwright.sync_api`; en Java, `assertThat` se importa de forma estática desde `PlaywrightAssertions`.
+</Aside>
+
+### La página de práctica
+
+Todos los ejemplos de este módulo se ejecutan de verdad contra la misma página: una tienda con un formulario de inicio de sesión, un buscador, tres productos con un botón **Agregar al carrito** cada uno (el tercero está agotado y deshabilitado), un contador de carrito con `data-testid="cart-count"` y un botón **Guardar**. Si cambias de lenguaje, el código cambia, pero la página y el resultado son los mismos.
+
+## Qué es un Locator
+
+Un Locator es una **descripción de cómo encontrar** uno o varios elementos, no el elemento en sí. Crearlo no toca la página. La búsqueda ocurre cada vez que haces algo con él: hacer clic, escribir o comprobar una aserción. Si en ese momento el elemento todavía no está listo, Playwright espera a que lo esté.
+
+<CodeExample id="locators/lazy-locator" title="El mismo Locator sobrevive a un re-render">
+	<Fragment slot="what">Guarda un Locator para el mensaje de estado, inicia sesión y comprueba el mensaje nuevo con el mismo Locator, aunque la aplicación reemplazó el nodo del DOM.</Fragment>
+	<Fragment slot="why">Como el Locator vuelve a buscar en cada uso, siempre trabaja con el DOM actual. Por eso se puede declarar una vez y reutilizar en toda la prueba o en un Page Object.</Fragment>
+	<Fragment slot="avoids">Evita referencias obsoletas: el equivalente al `StaleElementReferenceException` de Selenium cuando un framework como React o Angular vuelve a renderizar un componente.</Fragment>
+	<Fragment slot="alternative">Existen `ElementHandle` (`page.$()` en TypeScript y JavaScript, `QuerySelectorAsync` en C#), que apuntan a un nodo concreto. Playwright los desaconseja para pruebas: no esperan ni se vuelven a resolver.</Fragment>
+</CodeExample>
+
+## Por qué Playwright recomienda Locators
+
+- **Auto-waiting.** Antes de una acción, Playwright espera a que el elemento exista, sea visible, esté estable, habilitado y reciba eventos. No necesitas `Thread.Sleep` ni esperas explícitas para eso.
+- **Reintentos en las aserciones.** `expect(locator).toHaveText(...)` reintenta hasta que se cumple o vence el timeout, porque el Locator se vuelve a resolver en cada intento.
+- **Strictness.** Si una acción encuentra varios elementos, falla en lugar de adivinar cuál querías (ver [Strictness](#strictness)).
+- **Intención legible.** `getByRole('button', { name: 'Guardar' })` se entiende igual en una revisión de código que en un reporte de fallo.
+
+### Qué locator usar primero
+
+El orden recomendado prioriza lo que percibe la persona usuaria y deja la estructura interna al final.
+
+| Situación | Usa | Por qué |
+|---|---|---|
+| Botones, links, checkboxes, encabezados, campos con etiqueta | `getByRole` | Refleja cómo la tecnología asistiva y la persona entienden la página. |
+| Campo de formulario con `<label>` | `getByLabel` | Funciona aunque el campo no tenga un rol útil, como `type="password"`. |
+| Campo sin etiqueta, solo con placeholder | `getByPlaceholder` | Mejor que CSS, pero indica un problema de accesibilidad. |
+| Texto no interactivo: mensajes, avisos, celdas | `getByText` | Para contenido que se lee, no que se opera. |
+| Nada de lo anterior es estable o único | `getByTestId` | Contrato explícito entre desarrollo y QA. |
+| Código legado o estructura sin semántica | CSS o XPath | Último recurso; siempre por atributos estables, nunca por posición. |
+
+## getByRole
+
+Localiza por **rol ARIA** (`button`, `textbox`, `checkbox`, `heading`, `link`, `listitem`...) y **nombre accesible**, que normalmente es el texto visible o la etiqueta asociada.
+
+<CodeExample id="locators/get-by-role" title="Formulario de inicio de sesión por roles">
+	<Fragment slot="what">Escribe el correo en el campo de texto «Correo electrónico», marca «Recordarme», pulsa «Iniciar sesión» y verifica que existe el encabezado de nivel 2 «Productos».</Fragment>
+	<Fragment slot="why">El rol y el nombre son lo que la interfaz promete a quien la usa. Mientras el botón siga siendo un botón que dice «Iniciar sesión», el locator funciona aunque cambien las clases, el layout o el framework.</Fragment>
+	<Fragment slot="avoids">Evita depender de ids generados, clases de estilos o la posición en el DOM. Además, si el botón deja de ser accesible (por ejemplo, un `<div>` con `onclick`), la prueba falla y lo detecta.</Fragment>
+	<Fragment slot="alternative">Por defecto `name` busca una subcadena sin distinguir mayúsculas. Usa `exact: true` (TS) o `Exact = true` (C#) cuando dos nombres se contienen entre sí, como «Guardar» y «Guardar borrador».</Fragment>
+</CodeExample>
+
+## getByText
+
+Localiza por el texto visible. Úsalo para contenido que se **lee**: mensajes de confirmación, avisos, valores en una tabla. Para elementos que se **operan**, `getByRole` es más preciso.
+
+<CodeExample id="locators/get-by-text" title="Avisos y estados de un producto">
+	<Fragment slot="what">Comprueba que el aviso de envío gratis es visible, primero con el texto completo y después con un fragmento en minúsculas, y localiza el texto exacto «Agotado».</Fragment>
+	<Fragment slot="why">El texto es lo que la persona usuaria verifica con los ojos. La comparación por subcadena y sin mayúsculas tolera pequeños cambios de redacción; `exact` sirve cuando la palabra completa importa.</Fragment>
+	<Fragment slot="avoids">Evita localizar un mensaje por su contenedor (`.alert > p`), que se rompe cuando el equipo de diseño cambia el componente.</Fragment>
+	<Fragment slot="alternative">Si el texto aparece en varios lugares, como «Iniciar sesión» en el título y en el botón de esta página, `getByText` no es único: usa `getByRole` con el rol correcto o acota la región con [encadenamiento](#chaining).</Fragment>
+</CodeExample>
+
+## getByLabel
+
+Localiza un control de formulario por el texto de su `<label>`, por `aria-label` o por `aria-labelledby`.
+
+<CodeExample id="locators/get-by-label" title="Campos por su etiqueta">
+	<Fragment slot="what">Completa el correo y la contraseña buscando cada campo por la etiqueta que ve la persona y verifica el valor escrito.</Fragment>
+	<Fragment slot="why">Es la forma en que alguien identifica un campo: «el campo que dice Contraseña». También funciona en controles que no tienen un rol útil.</Fragment>
+	<Fragment slot="avoids">Un `<input type="password">` **no tiene rol `textbox`**, así que `getByRole('textbox', { name: 'Contraseña' })` no lo encuentra. `getByLabel` evita esa trampa.</Fragment>
+	<Fragment slot="alternative">Si el campo no tiene etiqueta, `getByPlaceholder` sirve como plan B. Conviene reportarlo, porque un campo sin etiqueta tampoco es accesible.</Fragment>
+</CodeExample>
+
+## getByPlaceholder
+
+Localiza un campo por su texto de ayuda (`placeholder`). En la página de práctica, el buscador no tiene etiqueta.
+
+<CodeExample id="locators/get-by-placeholder" title="Buscador sin etiqueta">
+	<Fragment slot="what">Escribe «teclado» en el campo cuyo placeholder es «Buscar productos» y verifica el valor.</Fragment>
+	<Fragment slot="why">El placeholder es lo único visible que identifica a este campo; sigue siendo un contrato con la persona usuaria.</Fragment>
+	<Fragment slot="avoids">Evita recurrir a `input[type=search]` o a la posición del campo en el header.</Fragment>
+	<Fragment slot="alternative">Si el equipo añade una etiqueta, cambia a `getByLabel` o `getByRole('searchbox', { name })`, que son más robustos: el placeholder desaparece al escribir y a menudo se traduce o se reescribe.</Fragment>
+</CodeExample>
+
+## getByTestId
+
+Localiza por un atributo pensado solo para pruebas, por defecto `data-testid`.
+
+<CodeExample id="locators/get-by-test-id" title="Contador del carrito y lista de productos">
+	<Fragment slot="what">Verifica que el contador del carrito empieza en 0 y que la lista de productos contiene tres elementos.</Fragment>
+	<Fragment slot="why">El contador es un número suelto sin rol ni etiqueta propia. Un `data-testid` acordado con desarrollo lo identifica sin ambigüedad.</Fragment>
+	<Fragment slot="avoids">Evita selectores CSS que se rompen al rediseñar el header, y evita depender de un texto que cambia (el número).</Fragment>
+	<Fragment slot="alternative">Para usar otro atributo, como `data-qa`, la configuración depende del binding. En Playwright Test: `use: { testIdAttribute: 'data-qa' }` en `playwright.config.ts`. En la librería de TS/JS: `selectors.setTestIdAttribute('data-qa')`. En C#: `Playwright.Selectors.SetTestIdAttribute("data-qa")`.</Fragment>
+</CodeExample>
+
+<Aside type="caution">
+`getByTestId` no prueba lo que ve la persona usuaria: un botón con `data-testid` sigue «funcionando» aunque no tenga texto. Úsalo cuando los locators orientados a la persona no sean estables o únicos, no como primera opción.
+</Aside>
+
+## CSS
+
+`page.locator()` acepta selectores CSS. Son aceptables cuando apuntan a algo **que el equipo controla y que tiene significado**: un id estable, una clase de dominio como `.product-card`, un atributo. Combínalos con locators orientados a la persona para acotar una región.
+
+<CodeExample id="locators/css" title="CSS estable como punto de partida">
+	<Fragment slot="what">Acota el formulario por su id y, dentro de él, busca el campo por su etiqueta. Después cuenta las tarjetas de producto por su clase.</Fragment>
+	<Fragment slot="why">`#login-form` y `.product-card` describen *qué es* el elemento, no *dónde está*. Encadenar `getByLabel` dentro del formulario mantiene la parte más fina orientada a la persona.</Fragment>
+	<Fragment slot="avoids">Evita la búsqueda global ambigua cuando la página tiene más de un formulario con campos parecidos.</Fragment>
+	<Fragment slot="alternative">Si el id es autogenerado (`#input-8f3a2`) o la clase es de estilos (`.mt-4.flex`), no es estable: usa un rol, una etiqueta o un `data-testid`.</Fragment>
+</CodeExample>
+
+## XPath
+
+Playwright soporta XPath con el prefijo `xpath=`; los selectores que empiezan con `//` o `..` también se interpretan como XPath. Es útil al migrar pruebas de Selenium o para relaciones que CSS no expresa, siempre que se base en **contenido**, no en posiciones.
+
+<CodeExample id="locators/xpath" title="XPath por contenido">
+	<Fragment slot="what">Busca el `<li>` cuyo `<h3>` dice exactamente «Teclado mecánico» y lee su precio.</Fragment>
+	<Fragment slot="why">La condición es el nombre del producto, que es un dato de negocio. Si se reordenan los productos o se añade uno nuevo, sigue funcionando.</Fragment>
+	<Fragment slot="avoids">Evita los XPath posicionales (`div[4]`) que se generan al copiar desde DevTools.</Fragment>
+	<Fragment slot="alternative">El mismo resultado con locators nativos: `getByRole('listitem').filter({ hasText: 'Teclado mecánico' })`, como en [filter](#filter). Además, XPath no atraviesa Shadow DOM; los locators `getBy*` y CSS sí.</Fragment>
+</CodeExample>
+
+## filter
+
+`filter` reduce las coincidencias de un Locator. Acepta `hasText` y `hasNotText` (texto contenido) y `has` y `hasNot` (otro Locator contenido).
+
+<CodeExample id="locators/filter" title="Elegir un producto de una lista">
+	<Fragment slot="what">Entre todos los `listitem`, se queda con el que contiene «Teclado mecánico» y pulsa su botón. Después busca el producto que contiene el texto exacto «Agotado» y lee su título.</Fragment>
+	<Fragment slot="why">Expresa la regla de negocio: «el botón del producto X» o «el producto que está agotado». No importa en qué posición esté.</Fragment>
+	<Fragment slot="avoids">Evita resolver la ambigüedad de varios botones iguales con `nth` o `first`, que dependen del orden de la lista.</Fragment>
+	<Fragment slot="alternative">`has` recibe cualquier Locator, por lo que puedes filtrar por un rol, un test id o una imagen. Los locators que pases a `has` se buscan dentro de cada elemento, no en toda la página.</Fragment>
+</CodeExample>
+
+## first, last y nth
+
+Eligen por **posición** dentro de las coincidencias. `nth` empieza en cero. En C#, `First` y `Last` son propiedades y `Nth(i)` es un método; en TypeScript y JavaScript los tres son métodos.
+
+<CodeExample id="locators/first-last-nth" title="Posición dentro de los botones del carrito">
+	<Fragment slot="what">Cuenta los tres botones «Agregar al carrito», pulsa el primero y el segundo, y comprueba que el último está deshabilitado.</Fragment>
+	<Fragment slot="why">Son útiles cuando **la posición es el requisito**: el primer resultado de una búsqueda ordenada, la última fila añadida a una tabla.</Fragment>
+	<Fragment slot="avoids">Cuando el orden es intencional, evitan escribir un XPath con índice. Fuera de ese caso suelen esconder un problema: si alguien reordena los productos, la prueba pulsa otro botón y puede seguir «pasando».</Fragment>
+	<Fragment slot="alternative">Si lo que importa es *cuál* elemento, no *en qué posición*, usa `filter` o encadenamiento.</Fragment>
+</CodeExample>
+
+## Chaining
+
+Llamar a un `getBy*` o `locator()` **sobre otro Locator** busca solo dentro de él. Así se acota la búsqueda a una región: un formulario, una fila, una tarjeta, un diálogo.
+
+<CodeExample id="locators/chaining" title="Botón dentro de una tarjeta concreta">
+	<Fragment slot="what">Parte de la lista de productos, elige la tarjeta de «Mouse inalámbrico» y pulsa el botón de esa tarjeta. Luego verifica que el carrito tiene 1 producto.</Fragment>
+	<Fragment slot="why">Cada eslabón tiene una responsabilidad: la región, el elemento de la región y la acción. Se lee como una instrucción a una persona.</Fragment>
+	<Fragment slot="avoids">Evita locators globales ambiguos y los `strict mode violation` cuando un mismo botón se repite en varias secciones.</Fragment>
+	<Fragment slot="alternative">Para combinar condiciones sobre un mismo elemento existen `and()` y `or()` (TS: `locator.and(otro)`, C#: `locator.And(otro)`). `or()` es útil cuando la interfaz puede mostrar una de dos variantes.</Fragment>
+</CodeExample>
+
+## Strictness
+
+Las acciones (`click`, `fill`, `check`...) y las aserciones sobre un solo elemento exigen que el Locator resuelva **exactamente un elemento**. Si encuentra varios, Playwright no elige por ti: lanza un **strict mode violation**. Las operaciones pensadas para listas, como `toHaveCount`, `count()` o `all()`, sí aceptan varios.
+
+<BadPractice title="acción sobre un Locator ambiguo" id="locators/strict-violation">
+En la página de práctica hay tres botones «Agregar al carrito», uno por producto. El error real que produce Playwright 1.63 es:
+
+```text
+locator.click: Error: strict mode violation: getByRole('button', { name: 'Agregar al carrito' }) resolved to 3 elements:
+    1) <button type="button">Agregar al carrito</button> aka getByRole('listitem').filter({ hasText: 'Teclado mecánico $45 Agregar' }).getByRole('button')
+    2) <button type="button">Agregar al carrito</button> aka getByRole('listitem').filter({ hasText: 'Mouse inalámbrico $20 Agregar' }).getByRole('button')
+    3) <button disabled type="button">Agregar al carrito</button> aka getByRole('listitem').filter({ hasText: 'Monitor 4K Agotado Agregar al' }).getByRole('button')
+```
+
+El mensaje lista cada coincidencia y sugiere un locator para cada una. Úsalo como pista, pero escribe tú el filtro con el dato de negocio (el nombre del producto), no con todo el texto de la tarjeta.
+</BadPractice>
+
+<BestPractice title="acotar con el dato que define al elemento" id="locators/chaining">
+La regla de la prueba es «agregar el mouse», así que el locator lo dice. Si se agregan productos o cambia el orden, sigue apuntando al mismo botón.
+</BestPractice>
+
+<Aside type="caution" title="No silencies el error con first()">
+Añadir `.first()` (o `.First` en C#) hace que el error desaparezca, pero convierte un locator ambiguo en uno posicional. La prueba pulsará el botón que quede primero, sea cual sea. Strictness te está avisando de que el locator no describe lo que querías.
+</Aside>
+
+## Locator resistente vs locator frágil
+
+Un locator es **frágil** cuando cambia al cambiar el diseño, aunque el comportamiento sea el mismo. Es **resistente** cuando solo cambia si cambia lo que la persona ve o hace.
+
+<BadPractice title="CSS por posición" id="locators/fragile-css">
+Funciona con el HTML de hoy. Se rompe si alguien añade un banner antes del layout, mueve el bloque de ajustes o envuelve el botón en otro `<div>`. Y cuando falla, el mensaje no dice qué botón se buscaba.
+</BadPractice>
+
+<BadPractice title="XPath absoluto copiado de DevTools" id="locators/fragile-xpath">
+«Copy full XPath» genera la ruta exacta del nodo. Es el mismo problema que el CSS posicional, más difícil de leer.
+</BadPractice>
+
+<BestPractice title="rol y nombre accesible" id="locators/save-button">
+Expresa la intención funcional («el botón Guardar») y sobrevive a cambios de layout, estilos y framework. Solo deja de funcionar si el botón deja de ser un botón o deja de decir «Guardar», y en ambos casos la prueba **debe** fallar.
+</BestPractice>
+
+| Pregunta | Frágil | Resistente |
+|---|---|---|
+| ¿Depende de la posición en el DOM? | `div:nth-child(4)`, `/div[4]` | No |
+| ¿Depende de clases de estilos o ids generados? | `.btn.mt-2`, `#input-8f3a2` | No |
+| ¿Se entiende sin ver el HTML? | No | `getByRole('button', { name: 'Guardar' })` |
+| ¿Falla cuando debe fallar? | A veces pasa pulsando otro elemento | Falla si el botón desaparece o cambia su propósito |
+
+## Caso QA real
+
+Prueba completa de un flujo de compra: iniciar sesión y agregar un producto **disponible** al carrito. Combina todo lo anterior y no usa ningún selector posicional.
+
+<CodeExample id="locators/qa-case" title="Agregar un producto al carrito">
+	<Fragment slot="what">Inicia sesión por etiquetas y rol, verifica el mensaje de bienvenida, acota la tarjeta del producto con `filter`, pulsa su botón y comprueba el contador del carrito.</Fragment>
+	<Fragment slot="why">Cada paso usa el locator más cercano a lo que haría una persona. Las aserciones web-first esperan a que la interfaz se actualice, sin esperas fijas.</Fragment>
+	<Fragment slot="avoids">Evita las tres causas más comunes de pruebas inestables en este flujo: selectores posicionales, esperas fijas y botones ambiguos.</Fragment>
+	<Fragment slot="alternative">En un framework real, los locators de la tienda vivirían en un Page Object (por ejemplo, `ProductCard(name)`), que se verá en el módulo de Diseño del Framework.</Fragment>
+</CodeExample>
+
+## Errores comunes
+
+- **`strict mode violation`**: el locator encuentra varios elementos. Acótalo con `filter` o encadenamiento; no lo tapes con `first()`.
+- **`getByRole('textbox')` no encuentra la contraseña**: `input[type=password]` no tiene rol `textbox`. Usa `getByLabel`.
+- **El nombre accesible no es el texto que ves**: un `aria-label` reemplaza al texto visible. Revisa el nombre en el panel de accesibilidad de DevTools o con el Inspector de Playwright.
+- **Coincidencias inesperadas por subcadena**: `name: 'Guardar'` también encuentra «Guardar borrador». Usa `exact`.
+- **Elementos dentro de un iframe**: un locator de `page` no entra en un iframe. Necesitas `frameLocator`, que se verá en su propio módulo.
+- **`nth` sobre listas que cambian de orden**: la prueba puede pasar pulsando el elemento equivocado.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| `driver.FindElement(By...)` | `page.getByRole(...)` / `page.locator(...)` | `FindElement` busca en el momento; el Locator busca en cada uso. |
+| `IWebElement` / `WebElement` | `Locator` | Un Locator no contiene un elemento, así que no queda «stale». |
+| `FindElements(...)` | `locator.count()`, `locator.all()`, `toHaveCount` | Para listas, sin strictness. |
+| `By.CssSelector`, `By.XPath` | `page.locator('css')`, `page.locator('xpath=...')` | Existen, pero son el último recurso, no el primero. |
+| `WebDriverWait` + `ExpectedConditions` antes de un clic | Auto-waiting en la acción | No hace falta esperar a que sea clickeable. |
+| Primer elemento si hay varios | `strict mode violation` | Playwright no adivina. |
+
+<Aside>
+Migrar un `By.XPath` directamente a `page.locator('xpath=...')` funciona, pero conserva la fragilidad. Al migrar, aprovecha para reemplazarlo por un locator orientado a la persona.
+</Aside>

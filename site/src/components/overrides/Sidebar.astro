@@ -1,0 +1,63 @@
+---
+/** Sidebar de Starlight + ✓ en los módulos completados y contador por ruta. */
+import Default from '@astrojs/starlight/components/Sidebar.astro';
+import { getModules } from '../../lib/catalog';
+
+const hrefs = Object.fromEntries((await getModules()).map((m) => [m.href, m.id]));
+---
+
+<pg-sidebar-progress data-modules={JSON.stringify(hrefs)}>
+	<Default />
+</pg-sidebar-progress>
+
+<script>
+	import { markDone, onProgressChange } from '../../lib/progress';
+
+	class SidebarProgress extends HTMLElement {
+		connectedCallback() {
+			const modules: Record<string, string> = JSON.parse(this.dataset.modules!);
+			for (const link of this.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+				const id = modules[new URL(link.href).pathname];
+				if (id) link.dataset.progressModule = id;
+			}
+			const groups = [...this.querySelectorAll<HTMLElement>('ul.top-level > li > details')].flatMap((group) => {
+				const links = group.querySelectorAll('[data-progress-module]');
+				if (links.length === 0) return [];
+				const counter = document.createElement('span');
+				counter.className = 'pg-count';
+				group.querySelector('summary .group-label')?.append(counter);
+				return [{ links, counter }];
+			});
+			onProgressChange((done) => {
+				markDone(this, done);
+				for (const { links, counter } of groups) {
+					const completed = [...links].filter((l) => (l as HTMLElement).dataset.done === 'true').length;
+					counter.textContent = `${completed}/${links.length}`;
+					counter.setAttribute('aria-label', `${completed} de ${links.length} completados`);
+				}
+			});
+		}
+	}
+
+	customElements.define('pg-sidebar-progress', SidebarProgress);
+</script>
+
+<style>
+	pg-sidebar-progress {
+		display: contents;
+	}
+	pg-sidebar-progress :global([data-done='true']::after) {
+		content: '✓';
+		margin-inline-start: auto;
+		padding-inline-start: 0.5rem;
+		color: var(--pg-ok);
+		font-size: var(--sl-text-xs);
+	}
+	pg-sidebar-progress :global(.pg-count) {
+		margin-inline-start: 0.5rem;
+		color: var(--sl-color-gray-3);
+		font: 500 var(--sl-text-2xs) / 1 var(--__sl-font-mono);
+		letter-spacing: 0;
+		text-transform: none;
+	}
+</style>

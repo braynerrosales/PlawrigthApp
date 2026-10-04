@@ -1,0 +1,11 @@
+---
+/** En un módulo, suma al pie de la tabla de contenidos el progreso de su ruta. */
+import Default from '@astrojs/starlight/components/TableOfContents.astro';
+import Progress from '../Progress.astro';
+import { getModule } from '../../lib/modules';
+
+const module = getModule(Astro.locals.starlightRoute.entry.data);
+---
+
+<Default />
+{module && <Progress category={module.category} />}

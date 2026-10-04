@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Iniciar sesión · Portal QA</title>
+	</head>
+	<body>
+		<main>
+			<h1>Iniciar sesión</h1>
+			<form id="login">
+				<label>Usuario <input name="usuario" autocomplete="username" /></label>
+				<label>Contraseña <input name="clave" type="password" autocomplete="current-password" /></label>
+				<button>Ingresar</button>
+			</form>
+			<p id="error" role="alert" hidden>Usuario o contraseña incorrectos</p>
+		</main>
+		<script>
+			// El servidor (simulado por la prueba con route) responde con la cookie de sesión.
+			document.getElementById('login').addEventListener('submit', async (event) => {
+				event.preventDefault();
+				const datos = Object.fromEntries(new FormData(event.target));
+				const respuesta = await fetch('/api/login', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(datos),
+				});
+				if (!respuesta.ok) {
+					document.getElementById('error').hidden = false;
+					return;
+				}
+				// Preferencia no sensible guardada en localStorage: también forma parte del estado de almacenamiento.
+				localStorage.setItem('ultimoUsuario', datos.usuario);
+				location.href = '/panel';
+			});
+		</script>
+	</body>
+</html>

@@ -1,0 +1,155 @@
+<!doctype html>
+<!--
+  Página de práctica del módulo Tablas y listas dinámicas. Una tabla de 12 pedidos que se
+  muestra de 5 en 5: se ordena con los botones del encabezado, se filtra por texto (con una
+  espera de 300 ms, como una búsqueda real), se pagina (cada página tarda 200 ms en cargar) y
+  cada fila tiene un botón "Cancelar". La lista "Últimos movimientos" se carga después de 1 s.
+  La tabla se vuelve a dibujar entera en cada cambio: las filas son elementos nuevos.
+-->
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<title>Pedidos</title>
+		<style>
+			table { border-collapse: collapse; }
+			th, td { border: 1px solid #ccc; padding: 4px 8px; }
+			th button { all: unset; cursor: pointer; font-weight: bold; }
+			th[aria-sort='ascending'] button::after { content: ' ▲'; }
+			th[aria-sort='descending'] button::after { content: ' ▼'; }
+		</style>
+	</head>
+	<body>
+		<h1>Pedidos</h1>
+		<label for="filtro">Filtrar pedidos</label>
+		<input id="filtro" type="search" />
+
+		<table>
+			<caption>Pedidos</caption>
+			<thead>
+				<tr>
+					<th data-key="id" aria-sort="ascending"><button type="button">Pedido</button></th>
+					<th data-key="cliente"><button type="button">Cliente</button></th>
+					<th data-key="estado"><button type="button">Estado</button></th>
+					<th data-key="total"><button type="button">Total</button></th>
+					<th>Acciones</th>
+				</tr>
+			</thead>
+			<tbody></tbody>
+		</table>
+		<p id="sin-resultados" hidden>No hay pedidos que coincidan con el filtro.</p>
+
+		<nav aria-label="Paginación">
+			<button type="button" id="anterior">Anterior</button>
+			<span role="status" id="pagina"></span>
+			<button type="button" id="siguiente">Siguiente</button>
+		</nav>
+
+		<h2 id="movimientos-titulo">Últimos movimientos</h2>
+		<ul aria-labelledby="movimientos-titulo" id="movimientos"></ul>
+
+		<script>
+			const pedidos = [
+				{ id: 'PED-1001', cliente: 'Marta Díaz', estado: 'Entregado', total: 120.0 },
+				{ id: 'PED-1002', cliente: 'Ana Torres', estado: 'Enviado', total: 45.5 },
+				{ id: 'PED-1003', cliente: 'Elena Mora', estado: 'Pendiente', total: 89.9 },
+				{ id: 'PED-1004', cliente: 'Luis Prado', estado: 'Entregado', total: 15.0 },
+				{ id: 'PED-1005', cliente: 'Bruno Ríos', estado: 'Cancelado', total: 230.0 },
+				{ id: 'PED-1006', cliente: 'Carla Gómez', estado: 'Pendiente', total: 60.0 },
+				{ id: 'PED-1007', cliente: 'Hugo León', estado: 'Enviado', total: 310.75 },
+				{ id: 'PED-1008', cliente: 'Diego Ruiz', estado: 'Entregado', total: 99.99 },
+				{ id: 'PED-1009', cliente: 'Inés Vega', estado: 'Pendiente', total: 12.4 },
+				{ id: 'PED-1010', cliente: 'Fabián Soto', estado: 'Enviado', total: 75.0 },
+				{ id: 'PED-1011', cliente: 'Karen Sosa', estado: 'Entregado', total: 150.0 },
+				{ id: 'PED-1012', cliente: 'Gabriela Paz', estado: 'Enviado', total: 54.3 },
+			];
+			const POR_PAGINA = 5;
+			const estado = { orden: 'id', direccion: 'ascending', filtro: '', pagina: 1 };
+			const $ = (selector) => document.querySelector(selector);
+			const formato = (total) => `$ ${total.toFixed(2).replace('.', ',')}`;
+
+			const visibles = () => {
+				const filtro = estado.filtro.toLowerCase();
+				const lista = pedidos.filter((p) =>
+					[p.id, p.cliente, p.estado, formato(p.total)].join(' ').toLowerCase().includes(filtro),
+				);
+				const signo = estado.direccion === 'ascending' ? 1 : -1;
+				return lista.sort((a, b) => {
+					const x = a[estado.orden];
+					const y = b[estado.orden];
+					return signo * (typeof x === 'number' ? x - y : x.localeCompare(y, 'es'));
+				});
+			};
+
+			const render = () => {
+				const lista = visibles();
+				const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
+				estado.pagina = Math.min(estado.pagina, paginas);
+				const inicio = (estado.pagina - 1) * POR_PAGINA;
+				// Se reemplaza el cuerpo completo: cada render crea filas nuevas.
+				$('tbody').innerHTML = lista
+					.slice(inicio, inicio + POR_PAGINA)
+					.map(
+						(p) =>
+							`<tr><td>${p.id}</td><td>${p.cliente}</td><td>${p.estado}</td><td>${formato(p.total)}</td>` +
+							`<td><button type="button" data-id="${p.id}"${p.estado === 'Cancelado' ? ' disabled' : ''}>Cancelar</button></td></tr>`,
+					)
+					.join('');
+				$('#sin-resultados').hidden = lista.length > 0;
+				$('#pagina').textContent = `Página ${estado.pagina} de ${paginas}`;
+				$('#anterior').disabled = estado.pagina === 1;
+				$('#siguiente').disabled = estado.pagina === paginas;
+				document.querySelectorAll('th[data-key]').forEach((th) => {
+					if (th.dataset.key === estado.orden) th.setAttribute('aria-sort', estado.direccion);
+					else th.removeAttribute('aria-sort');
+				});
+			};
+
+			// Ordenar: un clic ordena de forma ascendente; otro clic en la misma columna invierte el orden.
+			document.querySelectorAll('th[data-key] button').forEach((button) => {
+				button.addEventListener('click', () => {
+					const key = button.parentElement.dataset.key;
+					estado.direccion = estado.orden === key && estado.direccion === 'ascending' ? 'descending' : 'ascending';
+					estado.orden = key;
+					estado.pagina = 1;
+					render();
+				});
+			});
+
+			// Filtrar: la búsqueda se aplica 300 ms después de la última tecla.
+			let espera;
+			$('#filtro').addEventListener('input', (event) => {
+				clearTimeout(espera);
+				espera = setTimeout(() => {
+					estado.filtro = event.target.value;
+					estado.pagina = 1;
+					render();
+				}, 300);
+			});
+
+			// Paginar: la página nueva tarda 200 ms en llegar, como si viniera del servidor.
+			const irA = (delta) => setTimeout(() => {
+				estado.pagina += delta;
+				render();
+			}, 200);
+			$('#anterior').addEventListener('click', () => irA(-1));
+			$('#siguiente').addEventListener('click', () => irA(1));
+
+			// Cancelar un pedido desde su fila.
+			$('tbody').addEventListener('click', (event) => {
+				const id = event.target.closest('button')?.dataset.id;
+				if (!id) return;
+				pedidos.find((p) => p.id === id).estado = 'Cancelado';
+				render();
+			});
+
+			render();
+
+			// La lista llega 1 s después de cargar la página.
+			setTimeout(() => {
+				$('#movimientos').innerHTML = ['PED-1003 pagado', 'PED-1007 enviado', 'PED-1001 entregado', 'PED-1005 cancelado']
+					.map((texto) => `<li>${texto}</li>`)
+					.join('');
+			}, 1000);
+		</script>
+	</body>
+</html>
