@@ -17,7 +17,7 @@ Contexto compartido para todos los agentes de IA que trabajan en este repo (Clau
 - **Frontend:** Astro 7 + Starlight 0.42 + MDX + TypeScript (sitio estático, búsqueda con Pagefind)
 - **Backend:** ninguno (sin auth ni base de datos; preferencias y progreso en `localStorage`)
 - **Base de datos:** ninguna
-- **Tests:** solo de los **ejemplos de código** publicados: `@playwright/test` 1.63 (TS/JS), Microsoft.Playwright.NUnit 1.63 (.NET 10) pytest-playwright con Playwright 1.63 (Python) y Playwright 1.63 con JUnit 5 (Java, Maven Wrapper). **No hay tests de la propia web** (ver [ADR 001](docs/adr/001-sin-pruebas-de-la-propia-web.md)).
+- **Tests:** solo de los **ejemplos de código** publicados: `@playwright/test` 1.63 (TS/JS), Microsoft.Playwright.NUnit 1.63 (.NET 10) pytest-playwright con Playwright 1.63 (Python) y Playwright 1.63 con JUnit 5 (Java, Maven Wrapper). El «antes» de la ruta Selenium → Playwright usa Selenium 4.50 en los cinco lenguajes y necesita Chrome instalado. **No hay tests de la propia web** (ver [ADR 001](docs/adr/001-sin-pruebas-de-la-propia-web.md)).
 - **CI/CD:** pendiente. Pipeline previsto: Checkout → Install → Build → Validación de contenido → Publicar.
 
 ### Comandos

@@ -1,0 +1,134 @@
+---
+title: Modelo mental
+description: "Qué cambia al pasar de Selenium a Playwright: del driver a Browser, Context y Page, de WebElement a Locator y de las esperas explícitas al auto-waiting."
+category: selenium
+level: intermediate
+order: 17
+readingTime: 12
+tags:
+  - Selenium
+  - migración
+  - WebDriver
+  - WebElement
+  - StaleElementReferenceException
+  - WebDriverWait
+  - Locator
+prerequisites:
+  - Browser, Context y Page
+  - Locators
+  - Auto-waiting y actionability
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Quien viene de Selenium ya sabe automatizar: buscar elementos, esperar, hacer clic y comprobar. Lo que cambia en Playwright no es *qué* se hace, sino **qué representa cada objeto** y **quién se encarga de esperar**. Si se traduce el código línea por línea sin cambiar esas dos ideas, se obtienen pruebas de Playwright que conservan los problemas de Selenium.
+
+## Qué aprenderás
+
+- Por qué un `WebDriver` se reparte en tres objetos: Browser, BrowserContext y Page.
+- La diferencia de fondo entre un `WebElement` y un `Locator`, con un ejemplo que se ejecuta en los dos.
+- Dónde quedan las esperas explícitas cuando las acciones y las aserciones esperan solas.
+- Qué conceptos de Selenium no tienen un equivalente directo.
+
+### La página de práctica
+
+La misma pantalla de pedidos de [Auto-waiting](/web/auto-waiting/): **Cargar pedidos** trae tres pedidos con 800 ms de retraso y, cada vez que se pulsa, **vuelve a dibujar la lista desde cero**. Los ejemplos de Selenium y de Playwright abren exactamente la misma página.
+
+<Aside title="Cómo se validan los ejemplos de Selenium">
+Los ejemplos de Selenium de esta ruta también se ejecutan antes de publicarse, con Selenium 4.50 y Chrome en modo headless: NUnit en C#, JUnit 5 en Java y pytest en Python. En TypeScript y JavaScript el código es `selenium-webdriver` puro, pero lo ejecuta Playwright Test para validarlo junto a los demás ejemplos. En un proyecto de Selenium lo habitual es Mocha o Jest.
+</Aside>
+
+## Del driver a Browser, Context y Page
+
+En Selenium, un `WebDriver` es todo a la vez: el navegador que se abrió, la sesión con sus cookies y la pestaña que tiene el foco. En Playwright son tres objetos distintos:
+
+| Objeto | Qué representa | Cuánto vive en una suite |
+|---|---|---|
+| `Browser` | El proceso del navegador | Uno, compartido por muchas pruebas |
+| `BrowserContext` | Una sesión aislada: cookies, `localStorage`, permisos | Uno nuevo por prueba |
+| `Page` | Una pestaña dentro de un contexto | La que usa la prueba; puede haber varias |
+
+Separarlos permite lo que en Selenium cuesta un navegador entero: aislar cada prueba, tener dos usuarios a la vez o trabajar con dos pestañas sin cambiar el foco. Se ve en detalle en [Browser, Context y Page](/fundamentos/browser-context-page/).
+
+## De WebElement a Locator
+
+Es el cambio más importante. Un `WebElement` **es una referencia a un nodo concreto del DOM**: `FindElement` lo busca una vez y la referencia queda guardada. Si la página vuelve a dibujar esa parte, el nodo original desaparece y la referencia queda obsoleta (*stale*).
+
+<CodeExample id="modelo-mental/web-element" title="Selenium: el WebElement guardado deja de servir">
+	<Fragment slot="what">Carga los pedidos, guarda el primer elemento de la lista y comprueba su texto. Después vuelve a cargar los pedidos y comprueba que leer ese mismo elemento lanza `StaleElementReferenceException`.</Fragment>
+	<Fragment slot="why">La página reemplaza la lista entera: el texto es el mismo, pero los nodos son otros. El `WebElement` sigue apuntando al nodo viejo, que ya no está en el documento. Es lo que pasa en cualquier aplicación que vuelve a renderizar una tabla al filtrar, ordenar o refrescar datos.</Fragment>
+	<Fragment slot="avoids">Muestra el origen real de la `StaleElementReferenceException`: no es un fallo de Selenium ni una espera insuficiente, sino guardar una referencia a un nodo que la aplicación descartó.</Fragment>
+</CodeExample>
+
+Un `Locator` no contiene ningún elemento: **es una descripción de cómo encontrarlo**. Cada vez que se usa (en una acción o una aserción), Playwright lo busca de nuevo en la página actual.
+
+<CodeExample id="modelo-mental/locator" title="Playwright: el mismo Locator sigue funcionando">
+	<Fragment slot="what">El mismo recorrido: carga los pedidos, comprueba el primero, vuelve a cargar y comprueba de nuevo con el **mismo** Locator `primero`.</Fragment>
+	<Fragment slot="why">`getByRole('listitem').first()` no se resolvió al crearlo; se resuelve en cada `expect`. Después de volver a dibujar la lista, encuentra el nodo nuevo. Además, la aserción reintenta hasta que el texto es el esperado.</Fragment>
+	<Fragment slot="avoids">Evita la `StaleElementReferenceException` por diseño, sin capturar la excepción ni volver a buscar el elemento a mano.</Fragment>
+	<Fragment slot="alternative">Playwright también tiene `ElementHandle` (`page.$()` en TypeScript y JavaScript, `QuerySelectorAsync` en C#), que sí es una referencia a un nodo como el `WebElement`. La documentación oficial desaconseja usarlo; al migrar, no es el equivalente que conviene.</Fragment>
+</CodeExample>
+
+<BadPractice title="guardar elementos encontrados en variables o campos">
+	En Selenium es habitual buscar un elemento una vez y reutilizarlo, o cachearlo en un Page Object con `@CacheLookup`. Esa es justamente la referencia que queda obsoleta. En Playwright se guardan Locators, que son baratos de crear y no caducan.
+</BadPractice>
+
+## De las esperas explícitas al auto-waiting
+
+En Selenium, quien escribe la prueba decide cuándo esperar y qué condición esperar: `WebDriverWait` con una condición antes de la acción, o una espera implícita global. En Playwright, la espera es parte de cada acción y de cada aserción:
+
+- **Antes de actuar**, la acción espera a que el elemento sea visible, estable, habilitado y reciba el evento ([Auto-waiting](/web/auto-waiting/)).
+- **Para comprobar un resultado**, la aserción web-first reintenta hasta que se cumple ([Assertions](/web/assertions/)).
+
+La pregunta deja de ser «¿qué espero antes de este clic?» y pasa a ser «¿qué resultado tengo que ver después?».
+
+<BestPractice title="reemplazar cada espera por la aserción del resultado">
+	Si en Selenium esperabas a que apareciera un texto antes de seguir, en Playwright escribe la aserción de ese texto. Si esperabas a que un botón fuera clickeable, no escribas nada: el clic ya lo espera.
+</BestPractice>
+
+## Lo que no tiene un equivalente directo
+
+Algunas piezas de Selenium no se traducen a una pieza de Playwright. Buscarles un equivalente lleva a código que no hace falta:
+
+| En Selenium | En Playwright | Por qué |
+|---|---|---|
+| Espera implícita (`ImplicitWait`) | No existe | Cada acción y aserción espera su propia condición. |
+| `ExpectedConditions` | Aserciones web-first (`toBeVisible`, `toBeEnabled`, `toHaveText`…) | Esperar y comprobar son un solo paso. |
+| `PageFactory` y `@FindBy` | Locators asignados en el constructor del Page Object | Un Locator ya es perezoso. Ver [Page Object Model](/framework/page-object-model/). |
+| `SwitchTo().Frame()` / `SwitchTo().Window()` | `frameLocator()` y una `Page` por pestaña | No hay un foco que cambiar. Ver [Iframes, popups, tabs y dialogs](/web/iframes-y-dialogs/). |
+| Selenium Grid | Workers y sharding del runner | Playwright paraleliza en la misma máquina o reparte la suite entre máquinas; no hay un hub. |
+| Un driver por versión de navegador | Navegadores descargados con Playwright | Cada versión de Playwright trae los suyos. Ver [Instalación y primer test](/fundamentos/instalacion-y-primer-test/). |
+
+## Dónde está cada equivalencia
+
+Cada módulo de la guía cierra con una tabla «Selenium vs Playwright» de su tema:
+
+- [Locators](/web/locators/#selenium-vs-playwright): `FindElement`, `By`, `WebElement`.
+- [Acciones e interacciones](/web/acciones/#selenium-vs-playwright): `SendKeys`, `SelectElement`, `Actions`.
+- [Auto-waiting](/web/auto-waiting/#selenium-vs-playwright): `Thread.Sleep`, `WebDriverWait`, esperas implícitas.
+- [Assertions](/web/assertions/#selenium-vs-playwright): `Assert` sobre el texto o la cantidad de elementos.
+- [Navegación](/web/navegacion/#selenium-vs-playwright): `Navigate()`, URL y respuesta HTTP.
+- [Iframes, popups, tabs y dialogs](/web/iframes-y-dialogs/#selenium-vs-playwright): `SwitchTo()`.
+- [Sesión y autenticación](/api/sesion-y-autenticacion/#selenium-vs-playwright): cookies y perfiles.
+- [Page Object Model](/framework/page-object-model/#selenium-vs-playwright): `PageFactory` y `@FindBy`.
+- [Trace Viewer y diagnóstico](/debugging/trace-viewer-y-diagnostico/#selenium-vs-playwright): capturas y logs.
+
+Con este modelo mental, el siguiente paso es [migrar una prueba completa](/selenium/migracion-de-una-prueba/).
+
+## Errores comunes
+
+- **«Mi prueba migrada falla con strict mode violation»**: `FindElement` devolvía el primer elemento que coincidía; un Locator exige que coincida uno solo. Haz el Locator más específico en vez de agregar `.first()` por costumbre ([Strictness](/web/locators/#strictness)).
+- **Llamar a `waitForSelector` antes de cada acción**: es la traducción literal de `WebDriverWait`. La acción ya espera; quítalo.
+- **Usar `waitForTimeout` donde había un `Thread.Sleep`**: conserva el mismo problema. Reemplázalo por la aserción del resultado que se esperaba.
+- **Guardar `ElementHandle` para «tener el elemento»**: reproduce el problema del `WebElement` obsoleto. Usa Locators.

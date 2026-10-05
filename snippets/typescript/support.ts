@@ -4,6 +4,9 @@ import type { BrowserContext } from '@playwright/test';
 /** Página de práctica de `snippets/fixtures`, compartida con los snippets de C# y JavaScript. */
 export const fixture = (name: string) => readFileSync(new URL(`../fixtures/${name}.html`, import.meta.url), 'utf8');
 
+/** URL `file://` de la página de práctica: la abren igual Selenium (`driver.get`) y Playwright (`page.goto`). */
+export const fixtureUrl = (name: string) => new URL(`../fixtures/${name}.html`, import.meta.url).href;
+
 export const locatorsHtml = fixture('locators');
 
 /** Origen ficticio del sitio de práctica `fixtures/tienda`; nunca sale a la red. */

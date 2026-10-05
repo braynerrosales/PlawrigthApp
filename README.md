@@ -31,6 +31,8 @@ pip install -r snippets/python/requirements.txt
 
 Para los snippets de Java hace falta un **JDK** 17 o superior (un JRE no trae el compilador) y `JAVA_HOME` apuntando a él. No hace falta instalar Maven: `snippets/java/mvnw` (Maven Wrapper) lo descarga la primera vez en `~/.m2`, junto con Playwright 1.63 y JUnit 5.
 
+Los ejemplos «antes» de la ruta Selenium → Playwright (`migracion/` y `modelo-mental/` en cada lenguaje) usan **Selenium 4.50** (`selenium-webdriver`, `Selenium.WebDriver`, `selenium` y `selenium-java`, ya incluidos en las dependencias de cada proyecto) y necesitan **Google Chrome** instalado. Selenium Manager descarga el chromedriver que corresponde la primera vez que se ejecutan, así que esa primera ejecución necesita red.
+
 ## Estructura
 
 ```text
