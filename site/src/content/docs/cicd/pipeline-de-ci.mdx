@@ -1,0 +1,172 @@
+---
+title: Pipeline de CI
+description: "Un pipeline que instala los navegadores, ejecuta la suite y publica los resultados aunque fallen: el workflow real de GitHub Actions que valida esta guía y su equivalente en Azure DevOps."
+category: cicd
+level: intermediate
+order: 21
+readingTime: 15
+tags:
+  - CI/CD
+  - GitHub Actions
+  - Azure DevOps
+  - Azure Pipelines
+  - with-deps
+  - sharding
+  - Docker
+  - artefactos
+prerequisites:
+  - Ejecutar pruebas
+  - Resultados y reportes
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside, Code } from '@astrojs/starlight/components';
+import LanguageTabs from '../../../components/LanguageTabs.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+import { pipelineRegion } from '../../../lib/snippets';
+import githubWorkflow from '../../../../../.github/workflows/snippets.yml?raw';
+import azurePipeline from '../../../../../snippets/ci/azure-pipelines.yml?raw';
+
+export const jobs = { csharp: 'csharp', typescript: 'typescript', javascript: 'typescript', java: 'java', python: 'python' };
+
+Un pipeline de CI ejecuta la suite en una máquina limpia cada vez que alguien propone un cambio. Si las pruebas fallan, el cambio no se integra y el equipo lo sabe antes de que llegue a producción. Este módulo arma ese pipeline con Playwright en los cinco lenguajes.
+
+## Qué aprenderás
+
+- Los pasos de un pipeline de pruebas y por qué hace falta instalar las dependencias del navegador.
+- Un workflow de GitHub Actions real, el que valida los ejemplos de esta guía en cada PR.
+- El mismo pipeline en Azure DevOps.
+- Cómo publicar los resultados aunque las pruebas fallen y cómo repartir la suite entre varias máquinas.
+
+## Los pasos
+
+```text
+Checkout → Instalar dependencias → Instalar navegadores → Ejecutar pruebas → Publicar resultados
+```
+
+El paso propio de Playwright es el tercero: **instalar los navegadores con sus dependencias del sistema**. Un agente de CI con Linux limpio no trae las librerías que necesitan Chromium, Firefox y WebKit; `--with-deps` las instala junto con el navegador:
+
+| Lenguaje | Comando |
+|---|---|
+| TypeScript / JavaScript | `npx playwright install --with-deps chromium` |
+| C# | `pwsh bin/Debug/net10.0/playwright.ps1 install --with-deps chromium` (después de compilar el proyecto, que es lo que genera el script) |
+| Java | `mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install --with-deps chromium"` (con `-Dexec.classpathScope=test` si la dependencia de Playwright tiene `scope` `test`) |
+| Python | `playwright install --with-deps chromium` |
+
+Instala solo los navegadores con los que ejecutas: cada uno suma tiempo y espacio al pipeline.
+
+<Aside title="Alternativa: la imagen de Docker oficial">
+Microsoft publica imágenes con los navegadores y sus dependencias ya instalados: `mcr.microsoft.com/playwright` (Node), `mcr.microsoft.com/playwright/dotnet`, `/java` y `/python`. La etiqueta tiene que coincidir con tu versión de Playwright, por ejemplo `v1.63.0` o `v1.63.0-noble` (Ubuntu 24.04). Con la imagen, el paso de instalar navegadores desaparece.
+</Aside>
+
+## GitHub Actions
+
+Este es el workflow que valida esta guía: en cada pull request compila y ejecuta todos los ejemplos de los cinco lenguajes ([`.github/workflows/snippets.yml`](https://github.com/braynerrosales/PlawrigthApp/blob/master/.github/workflows/snippets.yml)). Lo que ves en cada pestaña es el job de ese lenguaje, tal como está en el repositorio. Las rutas (`-c snippets`, `snippets/dotnet`, `snippets/java`) son las de este repositorio; en tu proyecto, cámbialas por las tuyas.
+
+<LanguageTabs label="Job de GitHub Actions por lenguaje">
+	{Object.entries(jobs).map(([lang, job]) => (
+		<Fragment slot={lang}>
+			<Code code={pipelineRegion(githubWorkflow, job)} lang="yaml" title=".github/workflows/snippets.yml" />
+		</Fragment>
+	))}
+</LanguageTabs>
+
+Los puntos importantes:
+
+- **`if: ${{ !cancelled() }}`** en el paso que publica los resultados: sin esa condición, GitHub salta los pasos que siguen a uno fallido, y el reporte no se publica justo cuando hace falta.
+- **`upload-artifact`** guarda el reporte o los resultados como un archivo descargable desde la ejecución, con `retention-days` para no acumular espacio.
+- **`timeout-minutes`**: un job colgado (un servidor que no arranca, una prueba sin timeout) no consume las 6 horas que GitHub permite por defecto.
+- **`--reporter=github,html`** en TypeScript y JavaScript: `github` anota cada fallo en la línea del código, dentro del pull request, y `html` genera el reporte que se publica.
+- En TypeScript y JavaScript, el job ejecuta los ejemplos de los dos lenguajes (los dos usan Playwright Test con la misma configuración).
+
+<Aside>
+GitHub define la variable de entorno `CI=true` en cada job. Playwright Test la usa en la configuración típica (`forbidOnly: !!process.env.CI`, `retries: process.env.CI ? 2 : 0`), así que el mismo `playwright.config.ts` se comporta distinto en tu máquina y en CI.
+</Aside>
+
+## Azure DevOps
+
+<Aside type="caution" title="Este ejemplo no se ejecuta en esta guía">
+Los demás ejemplos de la guía se ejecutan antes de publicarse; este no, porque el repositorio no tiene un proyecto de Azure DevOps. Cada job hace los mismos pasos y comandos que el job de GitHub Actions del mismo lenguaje, que sí se ejecuta. Lo que cambia son las tareas de Azure Pipelines (`UseNode@1`, `UseDotNet@2`, `JavaToolInstaller@0`, `UsePythonVersion@0`, `PublishTestResults@2`).
+</Aside>
+
+<LanguageTabs label="Job de Azure Pipelines por lenguaje">
+	{Object.entries(jobs).map(([lang, job]) => (
+		<Fragment slot={lang}>
+			<Code code={pipelineRegion(azurePipeline, job)} lang="yaml" title="azure-pipelines.yml" />
+		</Fragment>
+	))}
+</LanguageTabs>
+
+Las diferencias con GitHub Actions:
+
+- **`condition: succeededOrFailed()`** cumple el papel de `if: ${{ !cancelled() }}`: el paso se ejecuta aunque las pruebas hayan fallado.
+- **`PublishTestResults@2`** lee el JUnit XML (o el TRX en C#) y muestra cada prueba en la pestaña **Tests** de la ejecución, con su historial. En GitHub Actions eso requiere una acción de terceros.
+- **`CI: 'true'`** se define a mano en el paso de TypeScript y JavaScript: Azure Pipelines no define esa variable (define `TF_BUILD`), y sin ella la configuración de Playwright Test se comporta como en local.
+- `PLAYWRIGHT_JUNIT_OUTPUT_FILE` indica dónde escribe el JUnit XML el reporter `junit` cuando se elige desde la línea de comandos.
+
+## Configuración pensada para CI
+
+En TypeScript y JavaScript, la configuración que genera `npm init playwright` ya distingue CI de local:
+
+```ts
+// playwright.config.ts
+export default defineConfig({
+	forbidOnly: !!process.env.CI,
+	retries: process.env.CI ? 2 : 0,
+	workers: process.env.CI ? 1 : undefined,
+	use: { trace: 'on-first-retry' },
+});
+```
+
+- **`forbidOnly`** hace fallar la ejecución si quedó un `test.only` olvidado, que en CI ejecutaría una sola prueba y daría un falso verde.
+- **`retries`** solo en CI, y **`trace: 'on-first-retry'`** para tener evidencia de cada prueba que necesitó un reintento ([Resultados y reportes](/cicd/resultados-y-reportes/)).
+- **`workers: 1`** es la recomendación de la documentación de Playwright para priorizar estabilidad en máquinas de CI con pocos recursos. Si tu agente tiene más núcleos y las pruebas son independientes, puedes subirlo.
+
+En C#, Java y Python no hay un archivo equivalente: los reintentos, los filtros y el paralelismo se pasan en el comando del pipeline ([Ejecutar pruebas](/cicd/ejecutar-pruebas/)).
+
+## Repartir la suite entre máquinas
+
+Cuando la suite tarda demasiado en una sola máquina, Playwright Test puede dividirla en partes (*shards*) que se ejecutan en jobs paralelos:
+
+```text
+npx playwright test --shard=1/4 --reporter=blob
+npx playwright test --shard=2/4 --reporter=blob
+…
+npx playwright merge-reports --reporter=html ./todos-los-blob-reports
+```
+
+Cada job ejecuta su parte y publica su carpeta `blob-report/`; un job final descarga todas en una carpeta y `merge-reports` las une en un solo reporte HTML.
+
+`--shard` existe solo en Playwright Test. En C#, Java y Python, el runner no reparte la suite entre máquinas. Lo habitual es separarla por etiquetas en varios jobs (`smoke`, `pagos`, …) con los filtros de [Ejecutar pruebas](/cicd/ejecutar-pruebas/#filtrar-con-etiquetas), o paralelizar dentro de una máquina (`pytest -n auto`, clases en paralelo en NUnit y JUnit).
+
+<BestPractice title="publicar resultados y evidencia en cada ejecución que falla">
+	El reporte, los traces y las capturas son lo único que queda de una ejecución de CI: el agente se destruye al terminar. Publícalos siempre que haya un fallo, con una retención corta para no acumular espacio. Sin esa evidencia, la única forma de investigar es volver a ejecutar y esperar que falle igual.
+</BestPractice>
+
+<BadPractice title="un pipeline que pasa aunque fallen las pruebas">
+	Agregar `continue-on-error: true` (GitHub) o `continueOnError: true` (Azure) al paso de las pruebas para que el pipeline «no moleste» hace que nadie vea los fallos. Si una prueba no es confiable, se corrige o se omite con un motivo; el pipeline debe fallar cuando fallan las pruebas.
+</BadPractice>
+
+## Errores comunes
+
+- **`Host system is missing dependencies to run browsers`**: se instaló el navegador sin `--with-deps`, o se cachearon los navegadores y se saltó la instalación de las librerías del sistema.
+- **`Executable doesn't exist at …`**: no se instalaron los navegadores, o la versión de Playwright del proyecto no coincide con la de los navegadores instalados (por ejemplo, con una imagen de Docker de otra versión).
+- **`./mvnw: Permission denied`**: el archivo `mvnw` está en git sin permiso de ejecución (pasa al crearlo en Windows). Se corrige una vez con `git update-index --chmod=+x mvnw`.
+- **El reporte no se publica cuando las pruebas fallan**: falta `if: ${{ !cancelled() }}` en GitHub o `condition: succeededOrFailed()` en Azure.
+- **En Azure, Playwright Test se comporta como en local**: falta `CI: 'true'` en el entorno del paso.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| Instalar Chrome y un driver compatible (o dejar que Selenium Manager lo descargue) | `playwright install --with-deps` | Los navegadores se fijan a la versión de Playwright: no hay desajustes entre navegador y driver. |
+| Selenium Grid para repartir la ejecución | Workers en una máquina; `--shard` entre máquinas en Playwright Test | No hay un servicio aparte que mantener. |
+| Imagen `selenium/standalone-chrome` | Imagen `mcr.microsoft.com/playwright` con la misma versión que el proyecto | Trae todos los navegadores y sus dependencias. |

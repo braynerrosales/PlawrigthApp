@@ -15,6 +15,8 @@ npm run snippets:python     # ejecuta los snippets Python (con el entorno virtua
 npm run snippets:java       # compila + ejecuta los snippets Java (Maven Wrapper, JUnit 5)
 ```
 
+En cada pull request y en cada push a `master`, el workflow `.github/workflows/snippets.yml` compila y ejecuta los snippets de los cinco lenguajes en Ubuntu. Es también el ejemplo de GitHub Actions del módulo «Pipeline de CI»: cada job está entre `# #region <lenguaje>` y `# #endregion` y se publica tal cual. El ejemplo de Azure DevOps (`snippets/ci/azure-pipelines.yml`) se publica igual, pero no se ejecuta.
+
 El sitio se publica en GitHub Pages (<https://braynerrosales.github.io/PlawrigthApp/>) con el workflow `.github/workflows/deploy.yml` en cada push a `master`. Por eso vive bajo el `base` `/PlawrigthApp/`: en local se abre en `http://localhost:4321/PlawrigthApp/`. Los links internos se escriben igual (`[Locators](/web/locators/)`); el `base` lo agrega un plugin de Markdown (`site/src/lib/base-links.ts`) y, en componentes y `<a href>` de MDX, `withBase()` de `site/src/lib/paths.ts`.
 
 Los navegadores para los snippets se instalan una vez con `npx playwright install chromium`.
@@ -27,7 +29,7 @@ python -m venv .venv
 pip install -r snippets/python/requirements.txt
 ```
 
-`requirements.txt` fija Playwright 1.63, la misma versión que TS y C#, así que reutiliza el Chromium ya descargado. Si falta, `playwright install chromium`.
+`requirements.txt` fija Playwright 1.63 y `pytest-rerunfailures` (lo usa el ejemplo de reintentos), la misma versión que TS y C#, así que reutiliza el Chromium ya descargado. Si falta, `playwright install chromium`.
 
 Para los snippets de Java hace falta un **JDK** 17 o superior (un JRE no trae el compilador) y `JAVA_HOME` apuntando a él. No hace falta instalar Maven: `snippets/java/mvnw` (Maven Wrapper) lo descarga la primera vez en `~/.m2`, junto con Playwright 1.63 y JUnit 5.
 
@@ -43,6 +45,7 @@ site/                      Astro + Starlight
   src/lib/                 categorías, lenguajes, schema de metadata, lector de snippets
 snippets/
   fixtures/                HTML de práctica compartido por todos los lenguajes
+  ci/                      ejemplo de Azure Pipelines (se publica en la guía; no se ejecuta)
   dotnet/<Modulo>/         C# (NUnit + Microsoft.Playwright.NUnit)
   typescript/<modulo>/     TypeScript (@playwright/test)
   javascript/<modulo>/     JavaScript (@playwright/test, tipos en JSDoc)

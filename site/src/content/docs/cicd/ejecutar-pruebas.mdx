@@ -1,0 +1,138 @@
+---
+title: Ejecutar pruebas
+description: "Cómo ejecutar la suite desde la línea de comandos en cada runner: filtrar con etiquetas, ejecutar en paralelo y reintentar sin ocultar las pruebas inestables."
+category: cicd
+level: intermediate
+order: 19
+readingTime: 14
+tags:
+  - CLI
+  - etiquetas
+  - workers
+  - paralelismo
+  - retries
+  - flaky
+  - NUnit
+  - pytest
+  - JUnit
+prerequisites:
+  - Instalación y primer test
+  - Auto-waiting y actionability
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Hasta aquí, cada módulo ejecutó sus ejemplos de a uno. En un proyecto real se ejecuta **la suite**: cientos de pruebas, varias veces al día, en tu máquina y en CI. Lo que ejecuta la suite no es Playwright sino el **test runner** de cada lenguaje, y cada runner tiene sus propios comandos para elegir qué ejecutar, cuántas pruebas a la vez y qué hacer cuando una falla.
+
+## Qué aprenderás
+
+- Los comandos para ejecutar toda la suite, un archivo o una prueba en cada runner.
+- Cómo etiquetar pruebas (por ejemplo `smoke`) y ejecutar solo esas.
+- Qué se ejecuta en paralelo por defecto y cómo se ajusta.
+- Cómo configurar reintentos y por qué no son una solución para las pruebas inestables.
+
+### La página de práctica
+
+La pantalla de pedidos de [Auto-waiting](/web/auto-waiting/): **Cargar pedidos**, **Exportar** y el mensaje «Exportación lista».
+
+## Ejecutar desde la línea de comandos
+
+| Lenguaje | Runner | Toda la suite | Un archivo o una clase | Por nombre |
+|---|---|---|---|---|
+| TypeScript / JavaScript | Playwright Test | `npx playwright test` | `npx playwright test pedidos.spec.ts` | `npx playwright test -g "exportar"` |
+| C# | NUnit (`dotnet test`) | `dotnet test` | `dotnet test --filter "FullyQualifiedName~PedidosTests"` | `dotnet test --filter "Name=ExportarPedidos"` |
+| Java | JUnit 5 (Maven Surefire) | `./mvnw test` | `./mvnw test -Dtest=PedidosTest` | `./mvnw test -Dtest="PedidosTest#exportarPedidos"` |
+| Python | pytest | `pytest` | `pytest test_pedidos.py` | `pytest -k exportar` |
+
+Para ver el navegador mientras corre la prueba o pausarla paso a paso, ver [Trace Viewer y diagnóstico](/debugging/trace-viewer-y-diagnostico/).
+
+## Filtrar con etiquetas
+
+Ejecutar por nombre sirve para una prueba. Para un grupo (las pruebas rápidas que validan lo esencial antes de un despliegue, las que tocan pagos, las lentas) se usan **etiquetas**. Cada runner tiene la suya.
+
+<CodeExample id="ejecucion/etiquetas" title="Una prueba etiquetada como smoke">
+	<Fragment slot="what">Marca la prueba de exportación con la etiqueta `smoke`.</Fragment>
+	<Fragment slot="why">La etiqueta es parte de la prueba, no del comando: cualquiera puede ejecutar el grupo sin conocer los nombres de los archivos. En TypeScript y JavaScript es la opción `tag` de `test` (empieza con `@`); en C#, `[Category]` de NUnit; en Java, `@Tag` de JUnit 5; en Python, una marca de pytest.</Fragment>
+	<Fragment slot="avoids">Evita mantener listas de archivos en el pipeline («ejecuta estos doce para el smoke») que quedan desactualizadas en cuanto alguien agrega una prueba.</Fragment>
+</CodeExample>
+
+Para ejecutar solo esas pruebas (comandos comprobados con los snippets de esta guía):
+
+| Lenguaje | Solo `smoke` | Todo menos `smoke` |
+|---|---|---|
+| TypeScript / JavaScript | `npx playwright test --grep @smoke` | `npx playwright test --grep-invert @smoke` |
+| C# | `dotnet test --filter "TestCategory=smoke"` | `dotnet test --filter "TestCategory!=smoke"` |
+| Java | `./mvnw test -Dgroups=smoke` | `./mvnw test -DexcludedGroups=smoke` |
+| Python | `pytest -m smoke` | `pytest -m "not smoke"` |
+
+<Aside>
+En Python, registra cada marca propia en `pytest.ini` (`markers = smoke: pruebas rápidas de lo esencial`). Si no, pytest muestra el aviso `PytestUnknownMarkWarning`, y con `--strict-markers` es un error: así una marca mal escrita no deja pruebas fuera del filtro sin que nadie lo note.
+</Aside>
+
+## Ejecución en paralelo
+
+Ejecutar en paralelo es lo que más reduce el tiempo de una suite, y cada runner lo hace distinto:
+
+| Runner | Por defecto | Cómo se ajusta |
+|---|---|---|
+| Playwright Test | Los archivos se reparten entre procesos (*workers*); las pruebas de un mismo archivo van en orden, en el mismo worker. | `--workers=4` o `workers` en la configuración. `fullyParallel: true` (o `test.describe.configure({ mode: 'parallel' })` en un archivo) reparte también las pruebas de un mismo archivo. |
+| NUnit | En serie. | `[Parallelizable(ParallelScope.Self)]` en cada clase, o a nivel de ensamblado, ejecuta las clases en paralelo. `Microsoft.Playwright.NUnit` solo admite `ParallelScope.Self`: las pruebas de una misma clase siguen en orden. El número de hilos: `dotnet test -- NUnit.NumberOfTestWorkers=4`. |
+| JUnit 5 | En serie. | `junit.jupiter.execution.parallel.enabled=true` y `junit.jupiter.execution.parallel.mode.classes.default=concurrent` (en `junit-platform.properties`) ejecutan las clases en paralelo. Los objetos de Playwright no son seguros entre hilos: cada clase usa su propio `Playwright`, como en la clase base de estos ejemplos. |
+| pytest | En serie. | El plugin `pytest-xdist`: `pytest -n auto` reparte las pruebas entre procesos. |
+
+<BestPractice title="pruebas independientes entre sí">
+	Una prueba que se ejecuta en paralelo no puede depender de otra: ni del orden, ni de datos que creó otra prueba, ni de una cuenta que otra está modificando al mismo tiempo. Cada prueba prepara lo que necesita (su propio contexto, sus propios datos). Es lo que hacen todos los ejemplos de esta guía, y por eso se pueden ejecutar en cualquier orden.
+</BestPractice>
+
+## Reintentos y pruebas inestables
+
+Una prueba **inestable** (*flaky*) a veces pasa y a veces falla sin que cambie el código. Un reintento vuelve a ejecutarla cuando falla: si pasa al segundo intento, el resultado final es «pasó», pero el reporte lo registra.
+
+<CodeExample id="ejecucion/reintentos" title="Reintentar una prueba que falla a veces" notApplicable={['java']}>
+	<Fragment slot="what">Configura hasta dos reintentos y simula un fallo intermitente: el primer intento falla y el segundo pasa.</Fragment>
+	<Fragment slot="why">En TypeScript y JavaScript, `test.describe.configure({ retries: 2 })` aplica los reintentos a ese archivo y `testInfo.retry` dice qué intento se está ejecutando; el reporte la marca como **flaky**. En C#, `[Retry(3)]` de NUnit permite hasta 3 intentos en total. En Python, la marca `flaky` viene del plugin `pytest-rerunfailures`, y el resultado muestra un **rerun**. El fallo simulado es solo para el ejemplo: en una prueba real la causa sería un tiempo de espera, un dato compartido o un problema de la aplicación.</Fragment>
+	<Fragment slot="avoids">Evita que un fallo esporádico frene todo el pipeline mientras se investiga, sin perder el registro de que ocurrió.</Fragment>
+	<Fragment slot="alternative">En Java, JUnit 5 no tiene reintentos: los hace Maven Surefire con `./mvnw test -Dsurefire.rerunFailingTestsCount=2` (o `<rerunFailingTestsCount>` en el `pom.xml`). Una prueba que pasa en un reintento aparece como *flake* en el resumen y como `<flakyFailure>` en el XML.</Fragment>
+</CodeExample>
+
+<Aside type="caution" title="[Retry] de NUnit no repite los fallos de Playwright">
+`[Retry]` solo vuelve a ejecutar la prueba cuando falla una **aserción de NUnit**. Una aserción de Playwright (`Expect(...)`) que falla lanza `PlaywrightException`, y NUnit la trata como un error inesperado: no la repite. Lo comprobamos con NUnit 3.13.2, la versión que instala `Microsoft.Playwright.NUnit` 1.63: con `[Retry(3)]`, una prueba cuyo `Expect` fallaba se ejecutó una sola vez.
+</Aside>
+
+En Playwright Test, los reintentos se configuran normalmente para toda la suite y solo en CI:
+
+```ts
+// playwright.config.ts
+export default defineConfig({
+	retries: process.env.CI ? 2 : 0,
+});
+```
+
+<BadPractice title="usar los reintentos como solución">
+	Un reintento que pasa no arregla nada: oculta la causa. Si los reintentos están activos y nadie mira las pruebas marcadas como flaky, la suite se vuelve más lenta y menos confiable, y un problema real de la aplicación (una condición de carrera, un timeout del servidor) puede quedar escondido. Revisa las pruebas flaky de cada reporte. En Playwright Test, `--fail-on-flaky-tests` hace fallar la ejecución si hubo alguna.
+</BadPractice>
+
+## Errores comunes
+
+- **La prueba pasa sola pero falla en la suite**: depende del orden o de datos que modifica otra prueba. Ejecútala junto a las demás en paralelo para reproducirlo y haz que prepare sus propios datos.
+- **El filtro por etiqueta ejecuta pruebas de más**: `--grep` de Playwright Test es una expresión regular sobre el título y las etiquetas, así que `@smoke` también coincide con `@smoke-lento`. Usa etiquetas que no sean prefijo de otras.
+- **`[Retry]` no reintenta en C#**: ver el aviso anterior. Solo repite los fallos de aserciones de NUnit.
+- **Las pruebas fallan al activar el paralelismo en Java**: comparten un `Playwright`, un `Browser` o una `Page` entre hilos. Ejecuta en paralelo por clase y deja que cada clase cree los suyos.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| Paralelismo con Selenium Grid (un nodo por navegador) | Workers del runner en la misma máquina | Cada prueba usa un contexto nuevo dentro de un navegador ya abierto; no hace falta un navegador por prueba. |
+| El runner (NUnit, JUnit, pytest) filtra y reintenta | Igual en C#, Java y Python; Playwright Test en TypeScript y JavaScript | Los comandos de filtro y de reintento de C#, Java y Python no cambian al migrar. |

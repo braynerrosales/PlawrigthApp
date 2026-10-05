@@ -1,0 +1,162 @@
+---
+title: Resultados y reportes
+description: "Cómo leer el resultado de una ejecución: los estados de una prueba, omitir con un motivo, los formatos de reporte de cada runner y cómo distinguir un bug de un problema de la automatización."
+category: cicd
+level: intermediate
+order: 20
+readingTime: 14
+tags:
+  - reportes
+  - HTML Report
+  - JUnit XML
+  - TRX
+  - skip
+  - flaky
+  - call log
+prerequisites:
+  - Ejecutar pruebas
+  - Trace Viewer y diagnóstico
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Una ejecución termina con un resumen («10 passed, 2 failed, 1 skipped») y, si algo falló, con un mensaje de error. Este módulo enseña a leer ese resultado: qué significa cada estado, dónde queda el reporte en cada runner y cómo decidir si un fallo es un bug de la aplicación o un problema de la prueba.
+
+## Qué aprenderás
+
+- Qué significa cada estado de una prueba y cómo lo llama cada runner.
+- Cómo omitir una prueba dejando el motivo en el reporte.
+- Qué formatos de reporte genera cada runner y cuál sirve para qué.
+- Cómo leer un mensaje de error de Playwright y qué señales separan un fallo funcional de uno de la automatización.
+
+## Los estados de una prueba
+
+| Estado | Significa | Qué hacer |
+|---|---|---|
+| **Passed** | Pasó al primer intento. | Nada. |
+| **Failed** | Falló en todos los intentos: una aserción no se cumplió, una acción venció su timeout o hubo una excepción. | Leer el error y el trace ([más abajo](#leer-un-fallo)). |
+| **Skipped** | No se ejecutó, a propósito, y el reporte dice por qué. | Revisar de vez en cuando que el motivo siga vigente. |
+| **Flaky** | Falló y pasó en un reintento. Cuenta como aprobada. | Investigarla: ver [Reintentos y pruebas inestables](/cicd/ejecutar-pruebas/#reintentos-y-pruebas-inestables). |
+
+Cada runner usa sus propios nombres:
+
+| Runner | Cómo aparecen |
+|---|---|
+| Playwright Test | `passed`, `failed`, `flaky`, `skipped`. Si vence el timeout de la prueba, su estado es `timedOut` y se cuenta entre las fallidas. |
+| NUnit | `Passed`, `Failed`, `Skipped`. Con `[Retry]`, solo el resultado del último intento. |
+| Maven Surefire (JUnit 5) | `Tests run`, `Failures` (falló una aserción), `Errors` (una excepción inesperada), `Skipped` y, con reintentos, `Flakes`. |
+| pytest | `passed`, `failed`, `skipped`, `error` (falló un fixture, no la prueba) y, con `pytest-rerunfailures`, `rerun`. |
+
+## Omitir con un motivo
+
+A veces una prueba no aplica en un contexto: una función que solo existe en un navegador, una pantalla que todavía no está en un entorno. Omitirla con un motivo la deja visible en el reporte; comentarla o borrarla la hace desaparecer.
+
+<CodeExample id="reportes/omitir" title="Omitir una prueba fuera de Chromium">
+	<Fragment slot="what">Exporta la página a PDF y comprueba que el archivo empieza con `%PDF`. Si el navegador no es Chromium, la prueba se omite con un motivo.</Fragment>
+	<Fragment slot="why">`page.pdf()` solo funciona en Chromium, así que en Firefox o WebKit el resultado correcto es **skipped**, no failed. En TypeScript y JavaScript, `test.skip(condición, motivo)` omite la prueba desde dentro. En C#, `Assert.Ignore` la termina como omitida con el mensaje. En Python, la marca `only_browser` de `pytest-playwright` la omite en los demás navegadores. En Java, `assumeTrue` de JUnit la interrumpe y Surefire la cuenta como `Skipped`.</Fragment>
+	<Fragment slot="avoids">Evita dos errores opuestos: una prueba que falla siempre en un navegador donde no tiene sentido (y acostumbra al equipo a ignorar los fallos), y una prueba comentada que nadie recuerda reactivar.</Fragment>
+	<Fragment slot="alternative">Para omitirla siempre, por ejemplo mientras se corrige un bug conocido: `test.fixme` en TypeScript y JavaScript, `[Ignore("motivo")]` en C#, `@Disabled("motivo")` en Java y `@pytest.mark.skip(reason=...)` en Python.</Fragment>
+</CodeExample>
+
+## Formatos de reporte
+
+La consola sirve para quien ejecuta las pruebas. Para compartir el resultado o publicarlo en CI se genera un archivo:
+
+| Runner | Formato | Cómo se genera |
+|---|---|---|
+| Playwright Test | **HTML**: navegable, con los pasos, los adjuntos y los traces de cada prueba. | `npx playwright test --reporter=html`; se abre con `npx playwright show-report`. Queda en `playwright-report/`. |
+| Playwright Test | **JUnit XML** | `--reporter=junit` y la variable `PLAYWRIGHT_JUNIT_OUTPUT_FILE` con la ruta del archivo (o `outputFile` en la configuración). |
+| NUnit (`dotnet test`) | **TRX** (el formato de Visual Studio y Azure DevOps) y HTML | `dotnet test --logger trx --logger html --results-directory resultados`. |
+| Maven Surefire | **JUnit XML** y texto | Automático: `target/surefire-reports/TEST-*.xml`. |
+| pytest | **JUnit XML** | `pytest --junitxml=resultados/junit.xml`. Para HTML hace falta el plugin `pytest-html`. |
+
+En Playwright Test se pueden combinar varios reporters en la configuración:
+
+```ts
+// playwright.config.ts
+export default defineConfig({
+	reporter: [['list'], ['html', { open: 'never' }], ['junit', { outputFile: 'resultados/junit.xml' }]],
+});
+```
+
+<Aside>
+**JUnit XML** es el formato que entienden casi todas las herramientas de CI (Azure DevOps, Jenkins, GitLab) para mostrar los resultados prueba por prueba. El reporte HTML de Playwright Test es el más completo para investigar, pero solo existe en TypeScript y JavaScript. En C#, Java y Python, los traces y las capturas se guardan como archivos aparte y se publican junto al reporte (ver [Pipeline de CI](/cicd/pipeline-de-ci/)).
+</Aside>
+
+## Leer un fallo
+
+Este es el error real que produce la prueba de exportación si espera el texto «Exportación completa» en lugar de «Exportación lista» (Playwright Test, reporter `list`):
+
+```text
+Error: expect(locator).toHaveText(expected) failed
+
+Locator:  getByRole('status')
+Expected: "Exportación completa"
+Received: "Exportación lista"
+Timeout:  5000ms
+
+Call log:
+  - Expect "toHaveText" getByRole('status') with timeout 5000ms
+  - waiting for getByRole('status')
+    14 × locator resolved to <p role="status">Exportación lista</p>
+       - unexpected value "Exportación lista"
+
+   7 | 	await page.getByRole('button', { name: 'Exportar' }).click();
+   8 |
+>  9 | 	await expect(page.getByRole('status')).toHaveText('Exportación completa');
+     | 	                                       ^
+  10 | });
+```
+
+Cómo leerlo, de arriba hacia abajo:
+
+- **`Expected` / `Received`**: qué esperaba la prueba y qué había en la página. Si lo recibido es lo que una persona también vería como un error, es un candidato a bug.
+- **`locator resolved to …` 14 veces**: el Locator encontró el elemento y la aserción reintentó durante los 5 segundos. El selector no es el problema: el texto nunca cambió.
+- **La línea marcada con `>`**: el paso exacto de la prueba que falló.
+
+En C#, Java y Python, el mensaje de Playwright es el mismo (lo esperado, lo recibido y el call log), dentro de la excepción de cada lenguaje: `PlaywrightException` en C#, `AssertionFailedError` en Java y `AssertionError` en Python. Para ver la página en ese momento, abre el trace ([Trace Viewer y diagnóstico](/debugging/trace-viewer-y-diagnostico/#evidencia-capturas-y-video)).
+
+## ¿Fallo de la aplicación o de la prueba?
+
+| Señal en el resultado | Suele indicar |
+|---|---|
+| `Received` muestra un valor incorrecto que la persona usuaria también vería (un total mal calculado, un mensaje de error) | **Fallo funcional**: confírmalo en el trace y repórtalo. |
+| Solo `waiting for getByRole(...)`, sin `locator resolved to` | **Automatización**: el Locator no encuentra nada. Cambió la pantalla o el nombre accesible, o la prueba está en otra página. |
+| `element is not enabled` o `not visible` en una acción | Falta un paso previo en la prueba, o la aplicación no habilitó algo que debía. Mira el trace para decidir. |
+| Pasa al repetir la ejecución sin cambiar nada (flaky) | Casi siempre **automatización** (una espera fija, datos compartidos), pero puede ser una condición de carrera real de la aplicación. |
+| Falla solo en CI | **Entorno**: datos distintos, más lentitud, otro tamaño de ventana, otra zona horaria o faltan dependencias del navegador. |
+| Una respuesta `500` en la pestaña Network del trace | **Backend**: el fallo de la interfaz es la consecuencia. |
+
+<BestPractice title="reportar un bug con la evidencia de la prueba">
+	Un fallo funcional se reporta con lo que la prueba ya generó: el mensaje de error (esperado y recibido), el trace o la captura, y los pasos de la prueba. Con eso, quien desarrolla puede reproducirlo sin volver a ejecutar la suite.
+</BestPractice>
+
+<BadPractice title="volver a ejecutar hasta que pase">
+	Relanzar el pipeline hasta que salga verde convierte un fallo en una prueba flaky que nadie investigó. Si un fallo no se puede explicar con el error y el trace, lo que falta es evidencia: activa el trace en los reintentos (`on-first-retry`) o al fallar (`retain-on-failure`).
+</BadPractice>
+
+## Errores comunes
+
+- **«No hay reporte HTML» en C#, Java o Python**: el reporte HTML con traces es de Playwright Test. En los demás lenguajes, el reporte lo genera el runner (TRX, JUnit XML) y los traces se guardan aparte.
+- **El reporte de CI está vacío cuando las pruebas fallan**: el paso que publica el reporte no se ejecuta después de un paso fallido. Ver [Pipeline de CI](/cicd/pipeline-de-ci/).
+- **Una prueba omitida aparece como fallida**: se lanzó una excepción en lugar de usar el mecanismo de omitir del runner (`test.skip`, `Assert.Ignore`, `assumeTrue`, `pytest.skip`).
+- **`Errors` en lugar de `Failures` en Surefire**: la prueba no falló una aserción, sino que lanzó una excepción (por ejemplo, el timeout de una acción). Lee el tipo de excepción antes del mensaje.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| Reporte del runner (NUnit, JUnit, pytest) o de una librería aparte | El mismo reporte del runner en C#, Java y Python; reporte HTML propio en Playwright Test | En TypeScript y JavaScript, el reporte HTML incluye los pasos, los adjuntos y el trace. |
+| Captura de pantalla manual en el `TearDown` | `screenshot: 'only-on-failure'` en Playwright Test; `--screenshot only-on-failure` en pytest; en C# y Java, en el código | Ver [Trace Viewer y diagnóstico](/debugging/trace-viewer-y-diagnostico/#evidencia-capturas-y-video). |
+| `WebDriverException` genérica | El error dice qué se esperaba, qué se recibió y qué estaba esperando la acción (call log) | El diagnóstico empieza en el mensaje, no en un nuevo intento con logs. |

@@ -4,7 +4,7 @@
 |----|-------|--------|----------|------|
 | 001 | Base del sitio (Astro + Starlight, metadata, selector de lenguaje, componentes) y módulo piloto Locators | DONE | Claude | — |
 | 002 | Inicializar git y repositorio remoto para el flujo de ramas y PRs | DONE | Bray | — |
-| 003 | Pipeline CI del MVP: Checkout → Install → Build → Validación de contenido → Publicar | TODO | — | — |
+| 003 | Pipeline CI del MVP: Checkout → Install → Build → Validación de contenido → Publicar (`deploy.yml` + `snippets.yml` con los 5 lenguajes) | REVIEW | Bray | feat/019-ejecucion-y-cicd |
 | 004 | Ruta 1. Empezar: módulos 01 Qué es Playwright, 02 Instalación y primer test, 03 Browser, Context y Page | DONE | Claude | — |
 | 005 | Ruta 2. Automatización Web: Acciones e interacciones, Auto-waiting y actionability, Assertions | REVIEW | Bray | — |
 | 006 | Ruta 2. Automatización Web: Navegación; Formularios; Upload y download; Iframes, popups, tabs y dialogs (ADR 003) | REVIEW | Bray | — |
@@ -20,5 +20,6 @@
 | 016 | Publicar en GitHub Pages: `base` `/PlawrigthApp/`, links internos con el base y workflow de build + deploy | REVIEW | Bray | feat/016-github-pages |
 | 017 | Dejar un solo workflow de Pages (quitar static.yml) | DONE | Claude | fix/017-un-solo-workflow-pages |
 | 018 | Ruta 7. Selenium → Playwright: Modelo mental y Migración de una prueba, con el «antes» en Selenium 4.50 ejecutable en los 5 lenguajes | REVIEW | Bray | feat/018-selenium-a-playwright |
+| 019 | Ruta 6. Ejecución y CI/CD: Ejecutar pruebas, Resultados y reportes, Pipeline de CI (GitHub Actions ejecutado + Azure DevOps sin ejecutar) | REVIEW | Bray | feat/019-ejecucion-y-cicd |
 
 Estados: `TODO` → `IN_PROGRESS` → `REVIEW` → `TESTING` → `DONE`

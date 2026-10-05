@@ -1,0 +1,133 @@
+# Valida el contenido de la guía: compila y ejecuta los snippets de los cinco lenguajes en cada PR y en master.
+# También es el ejemplo de GitHub Actions del módulo «Pipeline de CI»: cada región `#region <lenguaje>` se publica
+# tal cual en la guía. Si cambias un job, revisa el texto de site/src/content/docs/cicd/pipeline-de-ci.mdx.
+name: Validar snippets
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snippets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # #region typescript
+  typescript:
+    name: TypeScript y JavaScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Instalar Chromium y sus dependencias del sistema
+        run: npx playwright install --with-deps chromium
+      - name: Comprobar tipos
+        run: npx tsc -p snippets
+      - name: Ejecutar las pruebas
+        run: npx playwright test -c snippets --reporter=github,html
+      - name: Publicar el reporte HTML
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-typescript
+          path: playwright-report/
+          retention-days: 14
+  # #endregion
+
+  # #region csharp
+  dotnet:
+    name: C#
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Compilar
+        run: dotnet build snippets/dotnet
+      - name: Instalar Chromium y sus dependencias del sistema
+        run: pwsh snippets/dotnet/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+      - name: Ejecutar las pruebas
+        run: dotnet test snippets/dotnet --no-build --logger trx --results-directory resultados/dotnet
+      - name: Publicar los resultados
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-dotnet
+          path: resultados/dotnet/
+          retention-days: 14
+  # #endregion
+
+  # #region python
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: snippets/python/requirements.txt
+      - name: Instalar dependencias
+        run: pip install -r snippets/python/requirements.txt
+      - name: Instalar Chromium y sus dependencias del sistema
+        run: python -m playwright install --with-deps chromium
+      - name: Ejecutar las pruebas
+        run: >-
+          python -m pytest -c snippets/python/pytest.ini snippets/python
+          --junitxml=resultados/python/junit.xml
+          --screenshot only-on-failure --output resultados/python/evidencia
+      - name: Publicar los resultados
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-python
+          path: resultados/python/
+          retention-days: 14
+  # #endregion
+
+  # #region java
+  java:
+    name: Java
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: snippets/java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Instalar Chromium y sus dependencias del sistema
+        run: >-
+          ./mvnw -B exec:java -e
+          -Dexec.mainClass=com.microsoft.playwright.CLI
+          -Dexec.classpathScope=test
+          -Dexec.args="install --with-deps chromium"
+      - name: Ejecutar las pruebas
+        run: ./mvnw -B test
+      - name: Publicar los resultados
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-java
+          path: snippets/java/target/surefire-reports/
+          retention-days: 14
+  # #endregion
