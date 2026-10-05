@@ -52,6 +52,16 @@ function extract(source: string) {
 	return { code, marks };
 }
 
+/**
+ * Región `# #region <nombre>` … `# #endregion` de un archivo de pipeline (YAML importado con `?raw`), sin la
+ * indentación común. Falla el build si la región no existe, para que el texto no quede apuntando a un job borrado.
+ */
+export function pipelineRegion(source: string, name: string) {
+	const match = source.match(new RegExp(`^[ \\t]*# #region ${name}\\r?\\n([\\s\\S]*?)^[ \\t]*# #endregion`, 'm'));
+	if (!match) throw new Error(`No existe la región "${name}" en el archivo de pipeline.`);
+	return extract(match[1].replaceAll('\r', '')).code;
+}
+
 /** Ruta del snippet; si no existe ninguna variante, la convención principal (para mensajes de error). */
 export function snippetPath(id: string, lang: LanguageId) {
 	const [module, name] = id.split('/');

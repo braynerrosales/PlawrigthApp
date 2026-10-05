@@ -1,0 +1,122 @@
+# Ejemplo de Azure Pipelines publicado en el módulo «Pipeline de CI» (cada `#region <lenguaje>` se muestra en la guía).
+# NO se ejecuta en este repositorio: la validación real corre en GitHub Actions (.github/workflows/snippets.yml),
+# y cada job de aquí hace los mismos pasos que el job del mismo lenguaje en ese workflow.
+trigger:
+  - master
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+  # #region typescript
+  - job: typescript
+    displayName: TypeScript y JavaScript
+    timeoutInMinutes: 20
+    steps:
+      - task: UseNode@1
+        inputs:
+          version: 24.x
+      - script: npm ci
+        displayName: Instalar dependencias
+      - script: npx playwright install --with-deps chromium
+        displayName: Instalar Chromium y sus dependencias del sistema
+      - script: npx playwright test -c snippets --reporter=list,junit,html
+        displayName: Ejecutar las pruebas
+        env:
+          CI: 'true'
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: resultados/junit.xml
+      - task: PublishTestResults@2
+        displayName: Publicar los resultados
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: resultados/junit.xml
+      - task: PublishPipelineArtifact@1
+        displayName: Publicar el reporte HTML
+        condition: succeededOrFailed()
+        inputs:
+          targetPath: playwright-report
+          artifact: reporte-typescript
+  # #endregion
+
+  # #region csharp
+  - job: dotnet
+    displayName: C#
+    timeoutInMinutes: 20
+    steps:
+      - task: UseDotNet@2
+        inputs:
+          packageType: sdk
+          version: 10.0.x
+      - script: dotnet build snippets/dotnet
+        displayName: Compilar
+      - script: pwsh snippets/dotnet/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+        displayName: Instalar Chromium y sus dependencias del sistema
+      - script: dotnet test snippets/dotnet --no-build --logger trx --results-directory resultados/dotnet
+        displayName: Ejecutar las pruebas
+      - task: PublishTestResults@2
+        displayName: Publicar los resultados
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: VSTest
+          testResultsFiles: resultados/dotnet/*.trx
+  # #endregion
+
+  # #region python
+  - job: python
+    displayName: Python
+    timeoutInMinutes: 20
+    steps:
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.13'
+      - script: pip install -r snippets/python/requirements.txt
+        displayName: Instalar dependencias
+      - script: python -m playwright install --with-deps chromium
+        displayName: Instalar Chromium y sus dependencias del sistema
+      - script: >-
+          python -m pytest -c snippets/python/pytest.ini snippets/python
+          --junitxml=resultados/python/junit.xml
+          --screenshot only-on-failure --output resultados/python/evidencia
+        displayName: Ejecutar las pruebas
+      - task: PublishTestResults@2
+        displayName: Publicar los resultados
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: resultados/python/junit.xml
+      - task: PublishPipelineArtifact@1
+        displayName: Publicar la evidencia
+        condition: failed()
+        inputs:
+          targetPath: resultados/python/evidencia
+          artifact: evidencia-python
+  # #endregion
+
+  # #region java
+  - job: java
+    displayName: Java
+    timeoutInMinutes: 20
+    steps:
+      - task: JavaToolInstaller@0
+        inputs:
+          versionSpec: '21'
+          jdkArchitectureOption: x64
+          jdkSourceOption: PreInstalled
+      - script: >-
+          ./mvnw -B exec:java -e
+          -Dexec.mainClass=com.microsoft.playwright.CLI
+          -Dexec.classpathScope=test
+          -Dexec.args="install --with-deps chromium"
+        displayName: Instalar Chromium y sus dependencias del sistema
+        workingDirectory: snippets/java
+      - script: ./mvnw -B test
+        displayName: Ejecutar las pruebas
+        workingDirectory: snippets/java
+      - task: PublishTestResults@2
+        displayName: Publicar los resultados
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: snippets/java/target/surefire-reports/TEST-*.xml
+  # #endregion

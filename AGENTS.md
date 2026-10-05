@@ -18,7 +18,7 @@ Contexto compartido para todos los agentes de IA que trabajan en este repo (Clau
 - **Backend:** ninguno (sin auth ni base de datos; preferencias y progreso en `localStorage`)
 - **Base de datos:** ninguna
 - **Tests:** solo de los **ejemplos de código** publicados: `@playwright/test` 1.63 (TS/JS), Microsoft.Playwright.NUnit 1.63 (.NET 10) pytest-playwright con Playwright 1.63 (Python) y Playwright 1.63 con JUnit 5 (Java, Maven Wrapper). El «antes» de la ruta Selenium → Playwright usa Selenium 4.50 en los cinco lenguajes y necesita Chrome instalado. **No hay tests de la propia web** (ver [ADR 001](docs/adr/001-sin-pruebas-de-la-propia-web.md)).
-- **CI/CD:** pendiente. Pipeline previsto: Checkout → Install → Build → Validación de contenido → Publicar.
+- **CI/CD:** GitHub Actions. `snippets.yml` compila y ejecuta los snippets de los cinco lenguajes en cada PR y en `master`; `deploy.yml` hace build (check + validación de metadata) y publica en GitHub Pages en cada push a `master`.
 
 ### Comandos
 
@@ -85,7 +85,7 @@ site/                      sitio Astro + Starlight
   src/content/docs/        módulos (.mdx), una carpeta por ruta/categoría
   src/components/          los 6 componentes + overrides de Starlight
   src/lib/                 categorías, lenguajes, schema de metadata, lector de snippets
-snippets/                  ejemplos de código ejecutables (fixtures/, server/, dotnet/, typescript/, javascript/, python/, java/)
+snippets/                  ejemplos de código ejecutables (fixtures/, server/, dotnet/, typescript/, javascript/, python/, java/; ci/ es el ejemplo de Azure Pipelines, que no se ejecuta)
                            server/: API de práctica en Node; la arrancan snippets:ts, snippets:dotnet, snippets:python y snippets:java (ver README)
 docs/                      arquitectura y decisiones (adr/)
 graphify-out/              grafo de conocimiento del repo (generado)
