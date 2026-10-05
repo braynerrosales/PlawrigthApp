@@ -25,6 +25,7 @@
 	--pg-warn-soft: #2c2210;
 	--pg-info: #7fb0ff;
 	--pg-info-soft: #14213a;
+	--pg-claude: #e8875f;
 
 	/* Código: la superficie de mayor contraste en ambos temas. */
 	--pg-code-bg: #0b0a10;
@@ -76,6 +77,7 @@
 	--pg-warn-soft: #fbf1df;
 	--pg-info: #1f5fbf;
 	--pg-info-soft: #e7effb;
+	--pg-claude: #c15f3c;
 
 	--pg-code-bg: #16151d;
 	--pg-code-head: #1f1e28;

@@ -6,6 +6,21 @@ import { getModule } from '../../lib/modules';
 
 const { entry } = Astro.locals.starlightRoute;
 const module = getModule(entry.data);
+
+// Invasor pixelado (el 👾) como SVG: un emoji no se puede recolorear de forma fiable.
+const INVADER = [
+	'..X.....X..',
+	'...X...X...',
+	'..XXXXXXX..',
+	'.XX.XXX.XX.',
+	'XXXXXXXXXXX',
+	'X.XXXXXXX.X',
+	'X.X.....X.X',
+	'...XX.XX...',
+];
+const invaderPath = INVADER.flatMap((row, y) =>
+	[...row].flatMap((cell, x) => (cell === 'X' ? [`M${x} ${y}h1v1h-1z`] : [])),
+).join('');
 ---
 
 {
@@ -17,7 +32,13 @@ const module = getModule(entry.data);
 	)
 }
 <Default />
-<p class="credit">Made by Brayner Rosales x Claude</p>
+<p class="credit">
+	Made by
+	<svg class="invader invader--me" viewBox="0 0 11 8" aria-hidden="true"><path d={invaderPath} /></svg>
+	Ing. Brayner Rosales Solís x
+	<svg class="invader invader--claude" viewBox="0 0 11 8" aria-hidden="true"><path d={invaderPath} /></svg>
+	Claude
+</p>
 
 <style>
 	.module-end {
@@ -41,5 +62,18 @@ const module = getModule(entry.data);
 		font-size: var(--sl-text-sm);
 		color: var(--sl-color-gray-3);
 		text-align: center;
+	}
+	.invader {
+		width: 1.1em;
+		height: 0.8em;
+		vertical-align: -0.05em;
+		margin-inline: 0.3em;
+		shape-rendering: crispEdges;
+	}
+	.invader--me {
+		fill: var(--sl-color-accent);
+	}
+	.invader--claude {
+		fill: var(--pg-claude);
 	}
 </style>
