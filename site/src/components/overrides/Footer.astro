@@ -1,5 +1,5 @@
 ---
-/** Añade el control de progreso al final de cualquier página que sea un módulo. */
+/** Añade el control de progreso al final de cualquier página que sea un módulo y el crédito del sitio. */
 import Default from '@astrojs/starlight/components/Footer.astro';
 import Progress from '../Progress.astro';
 import { getModule } from '../../lib/modules';
@@ -17,6 +17,7 @@ const module = getModule(entry.data);
 	)
 }
 <Default />
+<p class="credit">Made by Brayner Rosales x Claude</p>
 
 <style>
 	.module-end {
@@ -32,5 +33,13 @@ const module = getModule(entry.data);
 	.module-end p {
 		margin: 0;
 		color: var(--sl-color-gray-3);
+	}
+	.credit {
+		margin: 2rem 0 0;
+		padding-top: 1rem;
+		border-top: 1px solid var(--pg-border);
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+		text-align: center;
 	}
 </style>
