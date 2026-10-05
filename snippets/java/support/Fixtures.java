@@ -21,6 +21,11 @@ public final class Fixtures {
         }
     }
 
+    /** URL {@code file://} de la página de práctica: la abren igual Selenium y Playwright. */
+    public static String url(String name) {
+        return DIR.resolve(name + ".html").toUri().toString();
+    }
+
     /** Página de práctica {@code snippets/fixtures/<name>.html}. */
     public static String fixture(String name) {
         return read(name + ".html");

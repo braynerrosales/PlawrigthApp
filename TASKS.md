@@ -18,5 +18,7 @@
 | 014 | Snippets Java en los 16 módulos (Playwright 1.63 + JUnit 5, Maven Wrapper), cobertura `complete` | REVIEW | Bray | — |
 | 015 | Snippets JavaScript en los 16 módulos (Playwright Test 1.63, tipos con JSDoc), cobertura `complete` | REVIEW | Bray | — |
 | 016 | Publicar en GitHub Pages: `base` `/PlawrigthApp/`, links internos con el base y workflow de build + deploy | REVIEW | Bray | feat/016-github-pages |
+| 017 | Dejar un solo workflow de Pages (quitar static.yml) | DONE | Claude | fix/017-un-solo-workflow-pages |
+| 018 | Ruta 7. Selenium → Playwright: Modelo mental y Migración de una prueba, con el «antes» en Selenium 4.50 ejecutable en los 5 lenguajes | REVIEW | Bray | feat/018-selenium-a-playwright |
 
 Estados: `TODO` → `IN_PROGRESS` → `REVIEW` → `TESTING` → `DONE`

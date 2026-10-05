@@ -17,6 +17,11 @@ def fixture(name: str) -> str:
     return (FIXTURES / f"{name}.html").read_text(encoding="utf-8")
 
 
+def fixture_url(name: str) -> str:
+    """URL `file://` de la página de práctica: la abren igual Selenium y Playwright."""
+    return (FIXTURES / f"{name}.html").as_uri()
+
+
 # Origen ficticio del sitio de práctica `fixtures/tienda`.
 TIENDA = "https://tienda.test"
 

@@ -1,0 +1,111 @@
+---
+title: Migración de una prueba
+description: "Una prueba real de Selenium migrada a Playwright paso a paso, qué desaparece, qué cambia y cómo migrar una suite sin detenerla."
+category: selenium
+level: intermediate
+order: 18
+readingTime: 12
+tags:
+  - Selenium
+  - migración
+  - WebDriverWait
+  - ChromeDriver
+  - XPath
+  - getByRole
+prerequisites:
+  - Modelo mental
+  - Locators
+  - Assertions
+languages:
+  csharp: complete
+  typescript: complete
+  javascript: complete
+  java: complete
+  python: complete
+validatedWith: "1.63"
+lastReviewed: 2026-10-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import CodeExample from '../../../components/CodeExample.astro';
+import BestPractice from '../../../components/BestPractice.astro';
+import BadPractice from '../../../components/BadPractice.astro';
+
+Este módulo toma una prueba de Selenium bien escrita (con esperas explícitas, sin `Sleep`) y la migra a Playwright. La prueba migrada no es una traducción línea por línea: algunas líneas desaparecen, otras cambian de forma y el resultado es más corto y más fiable.
+
+## Qué aprenderás
+
+- Qué pasa con el ciclo de vida del driver, los selectores y las esperas al migrar.
+- Cómo se ve la misma prueba en Selenium y en Playwright, en tu lenguaje.
+- Cómo migrar una suite completa sin detener las pruebas que ya funcionan.
+
+### La prueba
+
+Sobre la pantalla de pedidos de [Auto-waiting](/web/auto-waiting/): cargar los pedidos, exportarlos y comprobar que la exportación terminó y que hay tres pedidos. **Exportar** está deshabilitado hasta que llegan los datos (800 ms después del clic en **Cargar pedidos**).
+
+## Antes: la prueba en Selenium
+
+<CodeExample id="migracion/selenium" title="Selenium WebDriver">
+	<Fragment slot="what">Abre Chrome en modo headless, carga la página, pulsa **Cargar pedidos**, espera a que **Exportar** se habilite, lo pulsa y espera el mensaje «Exportación lista». Al final comprueba que hay tres pedidos.</Fragment>
+	<Fragment slot="why">Es como se escribe una prueba de Selenium que no es frágil: la espera explícita sobre **Exportar** es necesaria porque en Selenium un clic sobre un botón deshabilitado no lanza ningún error, simplemente no hace nada. Sin esa espera, la prueba fallaría más adelante, al no aparecer el mensaje, lejos de la causa real.</Fragment>
+	<Fragment slot="avoids">Sirve de punto de partida realista: migrar una prueba mal escrita (con `Sleep`) exagera la diferencia. Esta ya hace lo correcto dentro de lo que ofrece Selenium.</Fragment>
+</CodeExample>
+
+<Aside>
+En TypeScript y JavaScript, el ejemplo de Selenium lo ejecuta Playwright Test para validarlo junto a los demás; el código de la prueba es `selenium-webdriver` puro. En un proyecto de Selenium lo habitual es Mocha o Jest.
+</Aside>
+
+## Paso a paso
+
+| En la prueba de Selenium | En Playwright | Qué cambió |
+|---|---|---|
+| Crear el driver en el setup (`new ChromeDriver(options)`) y cerrarlo en el teardown (`Quit()`) | Desaparece: `page` llega del runner (fixture de Playwright Test o pytest, `PageTest` en C#, clase base en Java) | El runner crea un contexto nuevo por prueba y lo cierra al terminar, también si la prueba falla. |
+| `--headless=new` en las opciones de Chrome | Desaparece | Playwright ejecuta en modo headless por defecto. |
+| `driver.Navigate().GoToUrl(url)` / `driver.get(url)` | `page.goto(url)` | Equivalente directo; además espera al evento `load` y devuelve la respuesta. |
+| `By.XPath("//button[text()='Cargar pedidos']")` | `getByRole('button', { name: 'Cargar pedidos' })` | El Locator describe lo que ve la persona; no depende de la estructura del HTML. |
+| `WebDriverWait` hasta que **Exportar** esté habilitado, y luego el clic | Solo el clic | La acción espera sola a que el botón esté habilitado. |
+| `WebDriverWait` hasta que el texto sea «Exportación lista» | `expect(...).toHaveText('Exportación lista')` | Esperar y comprobar en un solo paso. |
+| `FindElements(...)` + comparar la cantidad | `expect(...).toHaveCount(3)` | La aserción reintenta hasta que la cantidad es la correcta. |
+
+## Después: la prueba en Playwright
+
+<CodeExample id="migracion/playwright" title="Playwright">
+	<Fragment slot="what">Abre la misma página, pulsa **Cargar pedidos** y **Exportar** y comprueba el mensaje y la cantidad de pedidos.</Fragment>
+	<Fragment slot="why">No hay esperas explícitas: el clic en **Exportar** espera a que el botón se habilite y las aserciones reintentan hasta que el resultado aparece. Tampoco hay configuración del navegador: el runner entrega una página nueva para cada prueba.</Fragment>
+	<Fragment slot="avoids">Evita mantener esperas que dependen del orden interno de la página: si mañana **Exportar** se habilita por otro motivo, la prueba sigue siendo la misma.</Fragment>
+	<Fragment slot="alternative">Si la URL se repite en muchas pruebas, configura `baseURL` y usa rutas relativas en `goto` ([Navegación](/web/navegacion/)).</Fragment>
+</CodeExample>
+
+<BadPractice title="traducir línea por línea">
+	Reemplazar cada `WebDriverWait` por `waitForSelector`, cada XPath por `locator('xpath=...')` y cada `Thread.Sleep` por `waitForTimeout` produce una prueba de Playwright que funciona, pero conserva todo lo que hacía frágil a la de Selenium y no aprovecha el auto-waiting ni las aserciones que reintentan.
+</BadPractice>
+
+## Cómo migrar una suite
+
+Rara vez se migra todo de una vez. Un orden que funciona:
+
+1. **Instala Playwright junto a Selenium** en el mismo repositorio y haz que las dos suites corran en CI. Nada se rompe el primer día.
+2. **Escribe en Playwright las pruebas nuevas** desde ese momento, para que la suite de Selenium deje de crecer.
+3. **Migra primero las pruebas inestables (*flaky*)**: es donde más se nota la diferencia y donde la migración se justifica sola.
+4. **Migra los Page Objects junto con sus pruebas**, reemplazando los `WebElement` y `@FindBy` por Locators ([Page Object Model](/framework/page-object-model/)).
+5. **Elimina cada prueba de Selenium en cuanto su versión de Playwright pase de forma estable** en CI. Mantener las dos versiones de la misma prueba duplica el mantenimiento.
+
+<BestPractice title="aprovechar la migración para mejorar los Locators">
+	Una migración es el mejor momento para reemplazar XPath y CSS ligados a la estructura por Locators orientados a la persona (`getByRole`, `getByLabel`). Si un elemento no se puede encontrar por su rol o su texto, suele ser un problema de accesibilidad de la aplicación que conviene reportar.
+</BestPractice>
+
+## Errores comunes
+
+- **La prueba migrada pasa, pero ya no comprueba nada**: en Selenium, la espera final hacía de comprobación. Si al migrar se borra la espera sin escribir la aserción, la prueba termina antes de que aparezca el resultado. Cada espera de Selenium que esperaba un resultado se convierte en una aserción.
+- **`strict mode violation` al migrar un `FindElement`**: el selector encuentra varios elementos y Selenium tomaba el primero. Haz el Locator más específico.
+- **La prueba migrada falla solo en CI**: revisa que no haya quedado un estado compartido entre pruebas (un driver estático en Selenium solía ocultarlo). En Playwright cada prueba tiene su propio contexto.
+- **Esperar un elemento que desaparece**: en Selenium se usaba `invisibilityOfElementLocated`. En Playwright es una aserción: `expect(locator).toBeHidden()`.
+
+## Selenium vs Playwright
+
+| Selenium | Playwright | Diferencia importante |
+|---|---|---|
+| Driver creado y cerrado en el setup y el teardown | `page` entregada por el runner | Un contexto aislado por prueba, cerrado aunque la prueba falle. |
+| `By.XPath` / `By.CssSelector` | `getByRole`, `getByLabel`, `getByText` | Se puede usar `locator('xpath=...')`, pero conserva la fragilidad. |
+| `WebDriverWait` antes de cada acción | Nada | Las acciones esperan solas. |
+| `WebDriverWait` + `Assert` sobre el resultado | Una aserción web-first | Espera y comprobación en un paso. |

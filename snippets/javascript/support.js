@@ -6,6 +6,12 @@ import { readFileSync } from 'node:fs';
  */
 export const fixture = (name) => readFileSync(new URL(`../fixtures/${name}.html`, import.meta.url), 'utf8');
 
+/**
+ * URL `file://` de la página de práctica: la abren igual Selenium (`driver.get`) y Playwright (`page.goto`).
+ * @param {string} name
+ */
+export const fixtureUrl = (name) => new URL(`../fixtures/${name}.html`, import.meta.url).href;
+
 export const locatorsHtml = fixture('locators');
 
 /** Origen ficticio del sitio de práctica `fixtures/tienda`; nunca sale a la red. */
